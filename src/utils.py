@@ -7,8 +7,35 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
+import numpy as np
+
 import polyscope as ps
 import polyscope.imgui as psim
+
+def load_bin_data(res, data_path):
+    data = np.fromfile(data_path, '<f4')[3:].reshape(res,res,res)
+    return jnp.asarray(data)
+
+def build_grid_samples (res):
+    X, Y, Z = np.mgrid[0:res, 0:res, 0:res]
+    full = np.stack([X.flatten(),Y.flatten(),Z.flatten()],axis=-1)
+    return full
+
+def normalize_grid_samples(samples, res):
+    #normalize samp
+    rang = res - 1
+    return (samples - rang / 2) / (rang/2)
+    
+
+def sample_volume(res, n_sample, data):
+    full = build_grid_samples(res)
+    samp_idx = np.random.choice(res ** 3, n_sample, replace=False)
+    samp = full[samp_idx]
+    samp_v = data[tuple(samp.T)]
+    samp = normalize_grid_samples(samp, res)
+    samp = jnp.asarray(samp, dtype= jnp.float32)
+    samp_v = jnp.asarray(samp_v, dtype=jnp.float32)
+    return samp, samp_v
 
 class Timer(object):
     def __init__(self, name=None, filename=None):

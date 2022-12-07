@@ -419,11 +419,14 @@ def main():
     grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
     grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
     delta = (grid[1,2] - grid[0,2]).item()
+    t_start = time.time()
     sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
     sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
     bbox_min = grid[0,:]
-    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=0., spacing=(delta, delta, delta))
+    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=-0.5, spacing=(delta, delta, delta))
     verts = verts + bbox_min[None,:]
+    t_end = time.time()
+    print("Time for extraction:", t_end - t_start)
     ps.register_surface_mesh("coarse shape preview", verts, faces) 
    
     print("REMEMBER: All routines will be slow on the first invocation due to JAX kernel compilation. Subsequent calls will be fast.")
