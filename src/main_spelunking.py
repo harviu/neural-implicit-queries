@@ -148,6 +148,21 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
             verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
             ps_vol = ps.register_volume_mesh("exterior tree nodes", np.array(verts), hexes=np.array(inds))
 
+    if compute_dense_cost:
+        # Construct the regular grid
+        with Timer("full recon"):
+            grid_res = 2 ** n_mc_depth
+            ax_coords = jnp.linspace(-1., 1., grid_res)
+            grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
+            grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
+            delta = (grid[1,2] - grid[0,2]).item()
+            sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
+            sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
+            bbox_min = grid[0,:]
+            verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))
+            verts = verts + bbox_min[None,:]
+            ps.register_surface_mesh("coarse shape preview", verts, faces) 
+
 def do_closest_point(opts, func, params, n_closest_point):
 
     data_bound = float(opts['data_bound'])
