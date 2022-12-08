@@ -98,7 +98,7 @@ def do_sample_surface(opts, implicit_func, params, n_samples, sample_width, n_no
 
 
 
-def do_hierarchical_mc(opts, implicit_func, params, n_mc_depth, do_viz_tree, compute_dense_cost):
+def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz_tree, compute_dense_cost):
 
 
     data_bound = opts['data_bound']
@@ -110,7 +110,7 @@ def do_hierarchical_mc(opts, implicit_func, params, n_mc_depth, do_viz_tree, com
     
 
     with Timer("extract mesh"):
-        tri_pos = hierarchical_marching_cubes(implicit_func, params, lower, upper, n_mc_depth, n_subcell_depth=3)
+        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=3)
         tri_pos.block_until_ready()
 
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
@@ -205,6 +205,8 @@ def main():
     parser.add_argument("input", type=str)
     
     parser.add_argument("--res", type=int, default=1024)
+
+    parser.add_argument("--iso", type=float, default=0)
     
     parser.add_argument("--image_write_path", type=str, default="render_out.png")
 
@@ -352,7 +354,7 @@ def main():
             psim.PushItemWidth(100)
 
             if psim.Button("Extract"):
-                do_hierarchical_mc(opts, implicit_func, params, n_mc_depth, do_viz_tree, compute_dense_cost)
+                do_hierarchical_mc(opts, implicit_func, params, args.iso, n_mc_depth, do_viz_tree, compute_dense_cost)
 
             psim.SameLine()
             _, n_mc_depth = psim.InputInt("n_mc_depth", n_mc_depth)
@@ -423,7 +425,7 @@ def main():
     sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
     sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
     bbox_min = grid[0,:]
-    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=0, spacing=(delta, delta, delta))
+    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=args.iso, spacing=(delta, delta, delta))
     verts = verts + bbox_min[None,:]
     t_end = time.time()
     print("Time for extraction:", t_end - t_start)

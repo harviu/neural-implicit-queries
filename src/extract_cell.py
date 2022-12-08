@@ -364,7 +364,7 @@ def extract_triangles_from_cell(func, params, mc_data, cell_lower, cell_upper, v
     return all_tri_pos, tri_is_valid
 
 @partial(jax.jit, static_argnames=("func", "n_sub_depth", "batch_eval_size"))
-def extract_triangles_from_subcells(func, params, mc_data, n_sub_depth, cell_lower, cell_upper, batch_eval_size=4096):
+def extract_triangles_from_subcells(func, params, isovalue, mc_data, n_sub_depth, cell_lower, cell_upper, batch_eval_size=4096):
     
     tri_table, edge_verts, vert_logical_coords = mc_data
 
@@ -394,6 +394,9 @@ def extract_triangles_from_subcells(func, params, mc_data, n_sub_depth, cell_low
         flat_vals = jnp.concatenate((batched_vals, straggler_vals))
     else:
         flat_vals = jax.vmap(partial(func,params))(flat_coords)
+    
+    # add the iso-values
+    flat_vals -= isovalue
     grid_vals = jnp.reshape(flat_vals, (side_n_pts, side_n_pts, side_n_pts))
 
     # logical grid of subcell inds
