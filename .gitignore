@@ -49,3 +49,5 @@ pyrightconfig.json
 *.exe
 *.out
 *.app
+
+osc_outputs/
