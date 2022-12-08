@@ -423,7 +423,7 @@ def main():
     sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
     sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
     bbox_min = grid[0,:]
-    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=-0.5, spacing=(delta, delta, delta))
+    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=0, spacing=(delta, delta, delta))
     verts = verts + bbox_min[None,:]
     t_end = time.time()
     print("Time for extraction:", t_end - t_start)
