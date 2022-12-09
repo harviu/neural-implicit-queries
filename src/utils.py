@@ -26,6 +26,23 @@ def normalize_grid_samples(samples, res):
     rang = res - 1
     return (samples - rang / 2) / (rang/2)
     
+def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 4096):
+    if flat_coords.shape[0] > batch_eval_size:
+        # for very large sets, break in to batches
+        nb = flat_coords.shape[0] // batch_eval_size
+        stragglers = flat_coords[nb*batch_eval_size:,:]
+        batched_flat_coords = jnp.reshape(flat_coords[:nb*batch_eval_size,:], (-1, batch_eval_size, 3))
+        vfunc = jax.vmap(partial(func, params))
+        batched_vals = jax.lax.map(vfunc, batched_flat_coords)
+        batched_vals = jnp.reshape(batched_vals, (-1,))
+        
+        # evaluate any stragglers in the very last batch
+        straggler_vals = jax.vmap(partial(func,params))(stragglers)
+
+        flat_vals = jnp.concatenate((batched_vals, straggler_vals))
+    else:
+        flat_vals = jax.vmap(partial(func,params))(flat_coords)
+    return flat_vals
 
 def sample_volume(res, n_sample, data):
     full = build_grid_samples(res)

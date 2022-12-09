@@ -156,7 +156,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
             grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
             grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
             delta = (grid[1,2] - grid[0,2]).item()
-            sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
+            sdf_vals = evaluate_implicit_fun(implicit_func, params, grid)
             sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
             bbox_min = grid[0,:]
             verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))
@@ -431,19 +431,17 @@ def main():
     # Visualize the data via quick coarse marching cubes, so we have something to look at
 
     # Construct the regular grid
-    grid_res = 128
-    ax_coords = jnp.linspace(-1., 1., grid_res)
-    grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
-    grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
-    delta = (grid[1,2] - grid[0,2]).item()
-    t_start = time.time()
-    sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
-    sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
-    bbox_min = grid[0,:]
-    verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=args.iso, spacing=(delta, delta, delta))
-    verts = verts + bbox_min[None,:]
-    t_end = time.time()
-    print("Time for extraction:", t_end - t_start)
+    with Timer("Time for coarse extraction"):
+        grid_res = 128
+        ax_coords = jnp.linspace(-1., 1., grid_res)
+        grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
+        grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
+        delta = (grid[1,2] - grid[0,2]).item()
+        sdf_vals = evaluate_implicit_fun(implicit_func, params, grid)
+        sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
+        bbox_min = grid[0,:]
+        verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=args.iso, spacing=(delta, delta, delta))
+        verts = verts + bbox_min[None,:]
     ps.register_surface_mesh("coarse shape preview", verts, faces) 
    
     print("REMEMBER: All routines will be slow on the first invocation due to JAX kernel compilation. Subsequent calls will be fast.")
