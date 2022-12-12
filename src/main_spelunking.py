@@ -120,7 +120,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     # Build the tree all over again so we can visualize it
     if do_viz_tree:
         n_mc_subcell=3
-        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True)
+        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue)
 
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']

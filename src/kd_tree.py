@@ -23,7 +23,7 @@ def construct_uniform_unknown_levelset_tree_iter(
         ib, out_valid, out_lower, out_upper, out_n_valid,
         finished_interior_lower, finished_interior_upper, N_finished_interior,
         finished_exterior_lower, finished_exterior_upper, N_finished_exterior,
-        offset=0.
+        isovalue=0.,offset=0.
         ):
 
     N_in = node_lower.shape[0]
@@ -32,7 +32,7 @@ def construct_uniform_unknown_levelset_tree_iter(
     def eval_one_node(lower, upper):
 
         # perform an affine evaluation
-        node_type = func.classify_box(params, lower, upper, offset=offset)
+        node_type = func.classify_box(params, lower, upper, isovalue=isovalue, offset=offset)
 
         # use the largest length along any dimension as the split policy
         worst_dim = jnp.argmax(upper-lower, axis=-1)
@@ -100,7 +100,7 @@ def construct_uniform_unknown_levelset_tree_iter(
            finished_exterior_lower, finished_exterior_upper, N_finished_exterior
 
 
-def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_terminate_thresh=None, split_depth=None, compress_after=False, with_childern=False, with_interior_nodes=False, with_exterior_nodes=False, offset=0., batch_process_size=2048):
+def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_terminate_thresh=None, split_depth=None, compress_after=False, with_childern=False, with_interior_nodes=False, with_exterior_nodes=False, isovalue=0., offset=0., batch_process_size=2048):
        
     # Validate input
     # ASSUMPTION: all of our bucket sizes larger than batch_process_size must be divisible by batch_process_size
@@ -178,7 +178,7 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
                     ib, out_valid, out_lower, out_upper, total_n_valid, \
                     finished_interior_lower, finished_interior_upper, N_finished_interior, \
                     finished_exterior_lower, finished_exterior_upper, N_finished_exterior, \
-                    offset=offset)
+                    isovalue=isovalue, offset=offset)
 
         node_valid = out_valid
         node_lower = out_lower
@@ -358,7 +358,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
 
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
-    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), offset=isovalue)
+    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), isovalue=isovalue)
     node_valid = out_dict['unknown_node_valid']
     node_lower = out_dict['unknown_node_lower']
     node_upper = out_dict['unknown_node_upper']

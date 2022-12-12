@@ -28,7 +28,7 @@ class WeakSDFImplicitFunction(implicit_function.ImplicitFunction):
     # def classify_box(self, params, box_lower, box_upper):
         # pass
         
-    def classify_general_box(self, params, box_center, box_vecs, offset=0.):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0.):
 
         # compute the radius of the box
         rad = jnp.sqrt(jnp.sum(jnp.square(jnp.linalg.norm(box_vecs, axis=-1)), axis=0))
@@ -44,7 +44,7 @@ class WeakSDFImplicitFunction(implicit_function.ImplicitFunction):
 
         # determine the type of the region
         output_type = SIGN_UNKNOWN
-        output_type = jnp.where(jnp.logical_and(~can_change, val >  offset), SIGN_POSITIVE, output_type)
-        output_type = jnp.where(jnp.logical_and(~can_change, val < -offset), SIGN_NEGATIVE, output_type)
+        output_type = jnp.where(jnp.logical_and(~can_change, val > isovalue+offset), SIGN_POSITIVE, output_type)
+        output_type = jnp.where(jnp.logical_and(~can_change, val < isovalue-offset), SIGN_NEGATIVE, output_type)
 
         return output_type

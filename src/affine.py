@@ -31,7 +31,7 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
     # def classify_box(self, params, box_lower, box_upper):
         # pass
         
-    def classify_general_box(self, params, box_center, box_vecs, offset=0.):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0.):
 
         d = box_center.shape[-1]
         v = box_vecs.shape[-2]
@@ -49,8 +49,8 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
 
         # determine the type of the region
         output_type = SIGN_UNKNOWN
-        output_type = jnp.where(may_lower >  offset, SIGN_POSITIVE, output_type)
-        output_type = jnp.where(may_upper < -offset, SIGN_NEGATIVE, output_type)
+        output_type = jnp.where(may_lower > isovalue+offset, SIGN_POSITIVE, output_type)
+        output_type = jnp.where(may_upper < isovalue-offset, SIGN_NEGATIVE, output_type)
 
         return output_type
 
