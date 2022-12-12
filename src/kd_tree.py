@@ -293,7 +293,7 @@ def sample_surface(func, params, lower, upper, n_samples, width, rngkey, n_node_
 
 
 # This is here for comparison to the tree-based one above
-@partial(jax.jit, static_argnames=("func", "n_samples_per_round"), donate_argnums=(8,9))
+@partial(jax.jit, static_argnames=("func", "n_samples_per_round"), donate_argnums=(7,8))
 def sample_surface_uniform_iter(func, params, n_samples_per_round, width, rngkey, 
         lower, upper,
         found_sample_points, found_start_ind):
@@ -336,7 +336,7 @@ def sample_surface_uniform(func, params, lower, upper, n_samples, width, rngkey)
     return found_sample_points
 
 @partial(jax.jit, static_argnames=("func","n_subcell_depth"), donate_argnums=(7,))
-def hierarchical_marching_cubes_extract_iter(func, params, isovalue, mc_data, n_subcell_depth, node_valid, node_lower, node_upper, tri_pos_out, n_out_written):
+def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid, node_lower, node_upper, tri_pos_out, n_out_written, isovalue):
 
     # run the extraction routine
     tri_verts, tri_valid = jax.vmap(partial(extract_cell.extract_triangles_from_subcells, func, params, isovalue, mc_data, n_subcell_depth))(node_lower, node_upper) 
@@ -358,7 +358,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
 
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
-    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth))
+    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), offset=isovalue)
     node_valid = out_dict['unknown_node_valid']
     node_lower = out_dict['unknown_node_lower']
     node_upper = out_dict['unknown_node_upper']
@@ -390,7 +390,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
         while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
             tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
         
-        tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, isovalue, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written)
+        tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
 
     # clip the result triangles
     # TODO bucket and mask here? need to if we want this in a JIT loop
