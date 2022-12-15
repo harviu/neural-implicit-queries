@@ -36,6 +36,12 @@ class ImplicitFunction:
         vecs = jnp.diag(pos_vec)
         return self.classify_general_box(params, center, vecs, isovalue=isovalue, offset=offset)
 
+    def estimate_box_bounds(self, params, box_lower, box_upper):
+        center = 0.5 * (box_lower + box_upper)
+        pos_vec = box_upper - center
+        vecs = jnp.diag(pos_vec)
+        return self.estimate_general_box_bounds(params, center, vecs)
+
     # General version for non-axis-aligned boxes
     def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0.):
         '''
@@ -43,6 +49,13 @@ class ImplicitFunction:
         '''
 
         raise RuntimeError("ImplicitFunction does not implement classify_general_box(). Subclasses must provide an implementation if is to be used.")
+
+    def estimate_general_box_bounds(self, params, box_center, box_vecs):
+        '''
+        Determine the bounds within a general box
+        '''
+
+        raise RuntimeError("ImplicitFunction does not implement estimate_general_box_bounds(). Subclasses must provide an implementation if is to be used.")
 
 
     def min_distance_to_zero(self, params, box_center, box_axis_vec):

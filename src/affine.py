@@ -54,6 +54,21 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
 
         return output_type
 
+    def estimate_general_box_bounds(self, params, box_center, box_vecs):
+        d = box_center.shape[-1]
+        v = box_vecs.shape[-2]
+        assert box_center.shape == (d,), "bad box_vecs shape"
+        assert box_vecs.shape == (v,d), "bad box_vecs shape"
+        keep_ctx = dataclasses.replace(self.ctx, affine_domain_terms=v)
+
+        # evaluate the function
+        input = coordinates_in_general_box(keep_ctx, box_center, box_vecs)
+        output = self.affine_func(params, input, {'ctx' : keep_ctx})
+
+        # compute relevant bounds
+        may_lower, may_upper = may_contain_bounds(keep_ctx, output)
+        return may_lower, may_upper
+
 # === Affine utilities
 
 # We represent affine data as a tuple input=(base,aff,err). Base is a normal shape (d,) primal vector value, affine is a (v,d) array of affine coefficients (may be v=0), err is a centered interval error shape (d,), which must be nonnegative.
