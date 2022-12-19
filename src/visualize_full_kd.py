@@ -189,11 +189,79 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
 
     return out_dict
 
-if __name__ == "__main__":
-    data_bound = float(1)
-    lower = jnp.array((-data_bound, -data_bound, -data_bound))
-    upper = jnp.array((data_bound,   data_bound,  data_bound))
+def get_real_bounds_helper(values, lower, upper, coord_bound = 1):
+    max_coord = values.shape[0] + 1
+    lower_coord = ((lower + coord_bound) * max_coord/ 2).astype(int)
+    l1,l2,l3 = lower_coord
+    upper_coord = ((upper + coord_bound) * max_coord/ 2).astype(int)
+    u1,u2,u3 = upper_coord
+    vs = values[l1:u1+1, l2:u2+1, l3:u3+1]
+    return vs.min(), vs.max()
 
-    implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
-    output = construct_full_kd_tree(implicit_func, params, lower, upper)
-    print(len(output['ub']), len(output['all_node_valid']), output['ub'].min())
+
+def get_real_bounds(func, params, output, split_depth=12, subcell_depth=3, batch_process_size=2048):
+    d = output['all_node_lower'].shape[-1]
+    kd_depth = split_depth // d
+    total_depth = kd_depth + subcell_depth
+    
+    grid_res = (2 ** total_depth) + 1
+    ax_coords = jnp.linspace(-1., 1., grid_res)
+    grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
+    grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
+    sdf_vals = utils.evaluate_implicit_fun(func, params, grid, batch_process_size)
+    sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
+    output['real_ub'] = []
+    output['real_lb'] = []
+
+    # ignore the valid mask for the output
+    for i in range(len(output['all_node_valid'])):
+        print("%d/%d" % (i,len(output['all_node_valid'])), end='\r')
+        lower = output['all_node_lower'][i]
+        upper = output['all_node_upper'][i]
+        minimum, maximum = get_real_bounds_helper(sdf_vals, lower, upper)
+        output['real_ub'].append(maximum)
+        output['real_lb'].append(minimum)
+    output['real_ub'] = jnp.asarray(output['real_ub'], dtype=jnp.float32)
+    output['real_lb'] = jnp.asarray(output['real_lb'], dtype=jnp.float32)
+    return output
+
+def generate_diff_tree(output, split_depth=12, data_bound = 1):
+    d = output['all_node_lower'].shape[-1]
+    kd_depth = split_depth // d
+    max_delta = data_bound * 2
+    out = [np.zeros((2 ** i,) * 3, dtype= np.float32) for i in range(kd_depth+1)]
+    for i in range(len(output['all_node_valid'])):
+        # print("%d/%d" % (i,len(output['all_node_valid'])), end='\r')
+        lower = output['all_node_lower'][i]
+        upper = output['all_node_upper'][i]
+        coord_diff = upper - lower
+        if coord_diff[0] == coord_diff[1] and coord_diff[1] == coord_diff[2]:
+            size = coord_diff[0]
+            res = int(round(max_delta / size))
+            level = int(math.log2(res))
+            c1 = int(round((lower[0] + data_bound) / size))
+            c2 = int(round((lower[1] + data_bound) / size))
+            c3 = int(round((lower[2] + data_bound) / size))
+            out[level][c1,c2,c3] = abs(output['real_ub'][i] - output['ub'][i]) + abs(output['real_lb'][i] - output['lb'][i])
+    return out
+            
+
+
+
+if __name__ == "__main__":
+    # data_bound = float(1)
+    # lower = jnp.array((-data_bound, -data_bound, -data_bound))
+    # upper = jnp.array((data_bound,   data_bound,  data_bound))
+
+    # implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
+    # output = construct_full_kd_tree(implicit_func, params, lower, upper)
+    # print(len(output['ub']), len(output['all_node_valid']), output['ub'].min())
+    # jnp.save('output', output, allow_pickle=True)
+
+    # output = get_real_bounds(implicit_func, params, output)
+    # jnp.save('output', output, allow_pickle=True)
+    output = jnp.load('output.npy', allow_pickle = True).item()
+    out = generate_diff_tree(output)
+    print(out)
+    for i, o in enumerate(out):
+        o.tofile("%d.bin" % i)
