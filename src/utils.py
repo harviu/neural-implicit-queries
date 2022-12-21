@@ -12,6 +12,22 @@ import numpy as np
 
 import polyscope as ps
 import polyscope.imgui as psim
+from vtkmodules import all as vtk
+from vtkmodules.util import numpy_support
+
+def save_vtk(res, full_res, data, filename):
+    vtk_data = vtk.vtkImageData()
+    vtk_data.SetSpacing(((full_res-1)/ (res-1),) * 3)
+    vtk_data.SetOrigin((0,0,0))
+    vtk_data.SetExtent((0, res-1, 0, res-1, 0, res-1))
+    vtk_data.SetDimensions((res, res, res))
+    vtk_array = numpy_support.numpy_to_vtk(data.flatten())
+    vtk_array.SetName('scalar')
+    vtk_data.GetPointData().AddArray(vtk_array)
+    writer = vtk.vtkXMLDataSetWriter()
+    writer.SetFileName(filename)
+    writer.SetInputData(vtk_data)
+    writer.Write()
 
 def load_bin_data(res, data_path):
     data = np.fromfile(data_path, '<f4')[3:].reshape(res,res,res)

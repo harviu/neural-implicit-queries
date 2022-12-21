@@ -196,6 +196,13 @@ def get_real_bounds_helper(values, lower, upper, coord_bound = 1):
     upper_coord = ((upper + coord_bound) * max_coord/ 2).astype(int)
     u1,u2,u3 = upper_coord
     vs = values[l1:u1+1, l2:u2+1, l3:u3+1]
+    # minimum = 1e8 
+    # maximum = -1e8
+    # for i in range(l1, u1+1):
+    #     for j in range(l2, u2+1):
+    #         for k in range(l3, u3+1):
+    #             minimum = min(minimum, values[i,j,k])
+    #             maximum = max(maximum, values[i,j,k])
     return vs.min(), vs.max()
 
 
@@ -225,30 +232,31 @@ def get_real_bounds(func, params, output, split_depth=12, subcell_depth=3, batch
     output['real_lb'] = jnp.asarray(output['real_lb'], dtype=jnp.float32)
     return output
 
-def generate_diff_tree(output, split_depth=12, data_bound = 1):
-    d = output['all_node_lower'].shape[-1]
+def generate_diff_tree(lower:jnp.ndarray, upper:jnp.ndarray, real_lb, real_ub, lb, ub, split_depth=12, data_bound = 1):
+    d = lower.shape[-1]
     kd_depth = split_depth // d
     max_delta = data_bound * 2
     out = [np.zeros((2 ** i,) * 3, dtype= np.float32) for i in range(kd_depth+1)]
-    for i in range(len(output['all_node_valid'])):
-        # print("%d/%d" % (i,len(output['all_node_valid'])), end='\r')
-        lower = output['all_node_lower'][i]
-        upper = output['all_node_upper'][i]
-        coord_diff = upper - lower
+
+
+    for i in range(len(lower)):
+        print("%d/%d" % (i,len(lower)), end='\r')
+        coord_diff = upper[i] - lower[i]
         if coord_diff[0] == coord_diff[1] and coord_diff[1] == coord_diff[2]:
             size = coord_diff[0]
             res = int(round(max_delta / size))
             level = int(math.log2(res))
-            c1 = int(round((lower[0] + data_bound) / size))
-            c2 = int(round((lower[1] + data_bound) / size))
-            c3 = int(round((lower[2] + data_bound) / size))
-            out[level][c1,c2,c3] = abs(output['real_ub'][i] - output['ub'][i]) + abs(output['real_lb'][i] - output['lb'][i])
+            c1 = int(round((lower[i][0] + data_bound) / size))
+            c2 = int(round((lower[i][1] + data_bound) / size))
+            c3 = int(round((lower[i][2] + data_bound) / size))
+            out[level][c1,c2,c3] = abs(real_ub[i] - ub[i]) + abs(real_lb[i] - lb[i])
     return out
             
 
 
 
 if __name__ == "__main__":
+
     # data_bound = float(1)
     # lower = jnp.array((-data_bound, -data_bound, -data_bound))
     # upper = jnp.array((data_bound,   data_bound,  data_bound))
@@ -256,12 +264,16 @@ if __name__ == "__main__":
     # implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
     # output = construct_full_kd_tree(implicit_func, params, lower, upper)
     # print(len(output['ub']), len(output['all_node_valid']), output['ub'].min())
-    # jnp.save('output', output, allow_pickle=True)
+    # # jnp.save('output', output, allow_pickle=True)
 
     # output = get_real_bounds(implicit_func, params, output)
     # jnp.save('output', output, allow_pickle=True)
     output = jnp.load('output.npy', allow_pickle = True).item()
-    out = generate_diff_tree(output)
-    print(out)
-    for i, o in enumerate(out):
-        o.tofile("%d.bin" % i)
+    out = generate_diff_tree(output['all_node_lower'], output['all_node_upper'], output['real_lb'], output['real_ub'], output['lb'], output['ub'])
+    from matplotlib import pyplot as plt
+    plt.hist(out[4].flatten())
+    plt.savefig('hist.png')
+    # print(out)
+    # for i, o in enumerate(out):
+    #     if o.shape[0] > 1: 
+    #         utils.save_vtk(o.shape[0], 128, o, "%d.vti" % i)

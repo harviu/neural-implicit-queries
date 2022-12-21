@@ -53,5 +53,6 @@ pyrightconfig.json
 osc_outputs/
 *.bin
 *.npy
+*.vti
 osc_init.sh
 train.sh
