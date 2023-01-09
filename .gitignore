@@ -56,3 +56,5 @@ osc_outputs/
 *.vti
 osc_init.sh
 train.sh
+*.png 
+*.jpg

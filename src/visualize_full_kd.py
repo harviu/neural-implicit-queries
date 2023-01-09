@@ -257,22 +257,23 @@ def generate_diff_tree(lower:jnp.ndarray, upper:jnp.ndarray, real_lb, real_ub, l
 
 if __name__ == "__main__":
 
-    # data_bound = float(1)
-    # lower = jnp.array((-data_bound, -data_bound, -data_bound))
-    # upper = jnp.array((data_bound,   data_bound,  data_bound))
+    data_bound = float(1)
+    lower = jnp.array((-data_bound, -data_bound, -data_bound))
+    upper = jnp.array((data_bound,   data_bound,  data_bound))
 
-    # implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
-    # output = construct_full_kd_tree(implicit_func, params, lower, upper)
-    # print(len(output['ub']), len(output['all_node_valid']), output['ub'].min())
-    # # jnp.save('output', output, allow_pickle=True)
-
-    # output = get_real_bounds(implicit_func, params, output)
+    implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
+    output = construct_full_kd_tree(implicit_func, params, lower, upper)
+    print(len(output['ub']), len(output['all_node_valid']), output['ub'].min())
     # jnp.save('output', output, allow_pickle=True)
-    output = jnp.load('output.npy', allow_pickle = True).item()
+
+    output = get_real_bounds(implicit_func, params, output, subcell_depth= 4)
+    # jnp.save('output', output, allow_pickle=True)
+
+    # output = jnp.load('output.npy', allow_pickle = True).item()
     out = generate_diff_tree(output['all_node_lower'], output['all_node_upper'], output['real_lb'], output['real_ub'], output['lb'], output['ub'])
     from matplotlib import pyplot as plt
-    plt.hist(out[4].flatten())
-    plt.savefig('hist.png')
+    print(plt.hist(out[4].flatten()))
+    plt.savefig('hist_sub3.png')
     # print(out)
     # for i, o in enumerate(out):
     #     if o.shape[0] > 1: 
