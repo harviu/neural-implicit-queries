@@ -44,7 +44,8 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
         output = self.affine_func(params, input, {'ctx' : keep_ctx})
 
         # compute relevant bounds
-        may_lower, may_upper = may_contain_bounds(keep_ctx, output)
+        may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=4)
+        # may_lower, may_upper = may_contain_bounds(keep_ctx, output)
         # must_lower, must_upper = must_contain_bounds(keep_ctx, output)
 
         # determine the type of the region
@@ -64,10 +65,11 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
         # evaluate the function
         input = coordinates_in_general_box(keep_ctx, box_center, box_vecs)
         output = self.affine_func(params, input, {'ctx' : keep_ctx})
+        base, aff, err = output
 
         # compute relevant bounds
         may_lower, may_upper = may_contain_bounds(keep_ctx, output)
-        return may_lower, may_upper
+        return may_lower, may_upper, base, aff, err # return output for debug reason
 
 # === Affine utilities
 
@@ -138,6 +140,22 @@ def may_contain_bounds(ctx, input,):
     base, aff, err = input
     rad = radius(input)
     return base-rad, base+rad
+
+def may_contain_bounds_mc(ctx, input,):
+    base, aff, err = input
+    left, right = utils.get_ci_mc(aff, 0.99999, 500000)
+    if err is not None:
+        left -= err
+        right += err
+    return base + left, base + right
+
+def may_contain_bounds_clt(ctx, input, z=2):
+    base, aff, err = input
+    rad = jnp.sum(aff ** 2, axis=-1)
+    if err is not None:
+        rad + err * err
+    sigma = jnp.sqrt(rad / 3)
+    return base - z*sigma, base + z*sigma
 
 def truncate_affine(ctx, input):
     # do nothing if the input is a constant or we are not in truncate mode

@@ -38,11 +38,11 @@ def main():
 
     # loss / data
     parser.add_argument("--n_epochs", type=int, default=100)
-    parser.add_argument("--n_samples", type=int, default=128 * 128 * 128)
+    # parser.add_argument("--n_samples", type=int, default=128 * 128 * 128)
     
     # training
     parser.add_argument("--lr", type=float, default=1e-2)
-    parser.add_argument("--batch_size", type=int, default=2048)
+    parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--lr_decay_every", type=int, default=99999)
     parser.add_argument("--lr_decay_frac", type=float, default=.5)
 
@@ -86,8 +86,8 @@ def main():
     data = (data - 0.5) * 2
 
     # sample training points
-    print(f"Sampling {args.n_samples} training points...")
-    samp, samp_v = sample_volume(data.shape[0], args.n_samples, data)
+    print(f"Sampling {len(data)} training points...")
+    samp, samp_v = sample_volume(data.shape[0], data)
 
 
     samp_target = samp_v

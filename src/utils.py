@@ -29,6 +29,36 @@ def save_vtk(res, full_res, data, filename):
     writer.SetInputData(vtk_data)
     writer.Write()
 
+def get_ci_stack(aff, prob=0.95): # this is not correct
+    # aff = np.array(aff) # convert aff to np array
+    aff = np.abs(aff) # take the absolute value and make it symmetric
+    aff = np.sort(aff)[::-1]
+    acc = 0
+    acc_prob = 0
+    last_acc_prob = 0
+    for i, a in enumerate(aff[:-1]):
+        h = 1 / a
+        next_a = aff[i+1]
+        l = a - next_a
+        acc += h
+        acc_prob += acc * l
+        if acc_prob > 1 - prob:
+            residual = 1 - prob - last_acc_prob
+            residual_length = residual / acc
+            out_length = a - residual_length
+            break
+        last_acc_prob = acc_prob
+    return out_length
+
+def get_ci_mc(aff_matrix, prob=0.95, mc_number = 1000): #monte carlo sampling
+    key = jax.random.PRNGKey(42)
+    samples = jax.random.uniform(key, (mc_number, *aff_matrix.shape)) # (mc_number, batch_size, n_aff)
+    samples = samples * 2 - 1
+    radius = (samples * aff_matrix[None,...]).sum(-1)  # (mc_number, batch_size)
+    radius = jnp.sort(radius, axis=0)
+    idx = int((1-prob) / 2 * mc_number)
+    return radius[idx], radius[-1-idx]
+
 def load_bin_data(res, data_path):
     data = np.fromfile(data_path, '<f4')[3:].reshape(res,res,res)
     return jnp.asarray(data)
@@ -43,7 +73,7 @@ def normalize_grid_samples(samples, res):
     rang = res - 1
     return (samples - rang / 2) / (rang/2)
     
-def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 4096):
+def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 2 ** 20):
     if flat_coords.shape[0] > batch_eval_size:
         # for very large sets, break in to batches
         nb = flat_coords.shape[0] // batch_eval_size
@@ -61,10 +91,8 @@ def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 4096):
         flat_vals = jax.vmap(partial(func,params))(flat_coords)
     return flat_vals
 
-def sample_volume(res, n_sample, data):
-    full = build_grid_samples(res)
-    samp_idx = np.random.choice(res ** 3, n_sample, replace=False)
-    samp = full[samp_idx]
+def sample_volume(res, data):
+    samp = build_grid_samples(res)
     samp_v = data[tuple(samp.T)]
     samp = normalize_grid_samples(samp, res)
     samp = jnp.asarray(samp, dtype= jnp.float32)

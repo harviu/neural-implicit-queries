@@ -112,9 +112,8 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     with Timer("extract mesh"):
         tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=3)
         tri_pos.block_until_ready()
-
-    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    tri_pos = jnp.reshape(tri_pos, (-1,3))
+        tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+        tri_pos = jnp.reshape(tri_pos, (-1,3))
     ps.register_surface_mesh("extracted mesh", np.array(tri_pos), np.array(tri_inds))
 
     # Build the tree all over again so we can visualize it
@@ -156,12 +155,13 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
             grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
             grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
             delta = (grid[1,2] - grid[0,2]).item()
+            # sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
             sdf_vals = evaluate_implicit_fun(implicit_func, params, grid)
             sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
             bbox_min = grid[0,:]
             verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))
             verts = verts + bbox_min[None,:]
-            ps.register_surface_mesh("coarse shape preview", verts, faces) 
+        ps.register_surface_mesh("coarse shape preview", verts, faces) 
 
 def do_closest_point(opts, func, params, n_closest_point):
 
@@ -257,7 +257,7 @@ def main():
     opts['tree_max_depth'] = 12
     opts['tree_split_aff'] = False
     cast_frustum = False
-    mode = 'affine_fixed'
+    mode = 'affine_all'
     modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 8

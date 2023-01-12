@@ -100,7 +100,7 @@ def construct_uniform_unknown_levelset_tree_iter(
            finished_exterior_lower, finished_exterior_upper, N_finished_exterior
 
 
-def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_terminate_thresh=None, split_depth=None, compress_after=False, with_childern=False, with_interior_nodes=False, with_exterior_nodes=False, isovalue=0., offset=0., batch_process_size=2048):
+def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_terminate_thresh=None, split_depth=None, compress_after=False, with_childern=False, with_interior_nodes=False, with_exterior_nodes=False, isovalue=0., offset=0., batch_process_size=4096):
        
     # Validate input
     # ASSUMPTION: all of our bucket sizes larger than batch_process_size must be divisible by batch_process_size

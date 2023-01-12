@@ -13,12 +13,13 @@ from implicit_function import SIGN_UNKNOWN, SIGN_POSITIVE, SIGN_NEGATIVE
 import extract_cell
 import geometry
 import implicit_mlp_utils
+from matplotlib import pyplot as plt
 
-@partial(jax.jit, static_argnames=("func","continue_splitting"), donate_argnums=(7,8,9,10,11,12))
+@partial(jax.jit, static_argnames=("func","continue_splitting"), donate_argnums=(7,8,9,10,11,12,13,14))
 def construct_full_kd_tree_iter(
         func, params, continue_splitting,
         node_valid, node_lower, node_upper,
-        ib, out_valid, out_lower, out_upper, out_n_valid, out_lb, out_ub,
+        ib, out_valid, out_lower, out_upper, out_n_valid, out_lb, out_ub, out_aff, out_base
         ):
 
     N_in = node_lower.shape[0]
@@ -27,15 +28,15 @@ def construct_full_kd_tree_iter(
     def eval_one_node(lower, upper):
 
         # perform an affine evaluation
-        lb, ub = func.estimate_box_bounds(params, lower, upper)
+        lb, ub, base, aff, err = func.estimate_box_bounds(params, lower, upper)
 
         # use the largest length along any dimension as the split policy
         worst_dim = jnp.argmax(upper-lower, axis=-1)
 
-        return lb, ub, worst_dim
+        return lb, ub, worst_dim, base, aff, err
         
     # evaluate the function inside nodes
-    lb, ub, node_split_dim = jax.vmap(eval_one_node)(node_lower, node_upper)
+    lb, ub, node_split_dim, base, aff, _ = jax.vmap(eval_one_node)(node_lower, node_upper)
 
     # split the unknown nodes to children
     # (if split_children is False this will just not create any children at all)
@@ -71,11 +72,13 @@ def construct_full_kd_tree_iter(
     out_valid = out_valid.at[ib,:outL].set(node_valid)
     out_lower = out_lower.at[ib,:outL,:].set(node_lower)
     out_upper = out_upper.at[ib,:outL,:].set(node_upper)
+    out_aff = out_aff.at[ib,:outL,:].set(aff)
+    out_base = out_base.at[ib,:outL].set(base)
     out_lb = out_lb.at[ib,:outL].set(lb)
     out_ub = out_ub.at[ib,:outL].set(ub)
     out_n_valid = out_n_valid + new_N_valid
 
-    return out_valid, out_lower, out_upper, out_n_valid, out_lb, out_ub
+    return out_valid, out_lower, out_upper, out_n_valid, out_lb, out_ub, out_aff, out_base
 
 
 def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_process_size=2048):
@@ -105,6 +108,8 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
     N_total_nodes = 1
     all_lb = jnp.zeros((0,))
     all_ub = jnp.zeros((0,))
+    all_base = jnp.zeros((0,))
+    all_aff = jnp.zeros((0,259))
 
     ## Recursively build the tree
     i_split = 0
@@ -132,15 +137,17 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
         out_valid = jnp.zeros((nb, 2*this_b), dtype=bool)
         out_lower = jnp.zeros((nb, 2*this_b, 3))
         out_upper = jnp.zeros((nb, 2*this_b, 3))
+        out_aff = jnp.zeros((nb, this_b, 259))
+        out_base = jnp.zeros((nb, this_b))
         out_lb = jnp.zeros((nb, this_b))
         out_ub = jnp.zeros((nb, this_b))
         total_n_valid = 0
         for ib in range(n_occ): 
-            out_valid, out_lower, out_upper, total_n_valid, out_lb, out_ub \
+            out_valid, out_lower, out_upper, total_n_valid, out_lb, out_ub, out_aff, out_base \
             = \
             construct_full_kd_tree_iter(func, params, do_continue_splitting, \
                     node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], \
-                    ib, out_valid, out_lower, out_upper, total_n_valid, out_lb, out_ub)
+                    ib, out_valid, out_lower, out_upper, total_n_valid, out_lb, out_ub, out_aff, out_base)
 
 
         node_valid = out_valid
@@ -152,9 +159,14 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
         node_lower = jnp.reshape(node_lower, (-1, d))
         node_upper = jnp.reshape(node_upper, (-1, d))
         out_lb = jnp.reshape(out_lb, (-1,))
-        out_ub = jnp.reshape(out_ub, (-1,))        
+        out_ub = jnp.reshape(out_ub, (-1,)) 
+        out_base = jnp.reshape(out_base, (-1,))
+        out_aff = jnp.reshape(out_aff, (-1, 259)) 
+
         out_ub = out_ub[:N_curr_nodes] # Number of nodes in the last ite
         out_lb = out_lb[:N_curr_nodes]
+        out_base = out_base[:N_curr_nodes]
+        out_aff = out_aff[:N_curr_nodes]
 
         N_curr_nodes = total_n_valid # update the number
 
@@ -166,6 +178,8 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
         # concatenate the bounds
         all_lb = jnp.concatenate((all_lb, out_lb))
         all_ub = jnp.concatenate((all_ub, out_ub))
+        all_aff = jnp.concatenate((all_aff, out_aff))
+        all_base = jnp.concatenate((all_base, out_base))
 
         if quit_next:
             break
@@ -185,6 +199,8 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
             'all_node_upper' : all_nodes_upper,
             'lb': all_lb,
             'ub': all_ub,
+            'aff': all_aff,
+            'base': all_base,
         }
 
     return out_dict
@@ -262,18 +278,38 @@ if __name__ == "__main__":
     upper = jnp.array((data_bound,   data_bound,  data_bound))
 
     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
-    output = construct_full_kd_tree(implicit_func, params, lower, upper)
-    print(len(output['ub']), len(output['all_node_valid']), output['ub'].min())
-    # jnp.save('output', output, allow_pickle=True)
+    output = construct_full_kd_tree(implicit_func, params, lower, upper, split_depth=15)
+    left, right = utils.get_ci_mc(output['aff'][-10:], prob=0.95, mc_number=1000000)
+    print(left)
+    print(right)
+    sigma = jnp.sqrt(((output['aff'][-10:] ** 2).sum(-1) / 3))
+    print(sigma * 2)
+    print(jnp.abs(output['aff'][-10:]).sum(-1))
 
-    output = get_real_bounds(implicit_func, params, output, subcell_depth= 4)
+    # output['ub'] = right
+    # output['lb'] = left
+    # print(len(output['ub']), len(output['all_node_valid']), output['ub'].max())
+
+    # for aff in output['aff'][-100:]:
+    #     aff = np.array(aff)
+    #     print(np.abs(aff).mean() * 2)
+        # print(utils.get_ci(aff, 0.95))
+
+        # print(np.sort(aff))
+        # hist = plt.hist(aff.flatten(), bins=10)
+        # plt.savefig('aff.png')
+        # plt.clf()
+        # plt.cla()
+        # break
+
+    # output = get_real_bounds(implicit_func, params, output, subcell_depth= 4)
     # jnp.save('output', output, allow_pickle=True)
 
     # output = jnp.load('output.npy', allow_pickle = True).item()
-    out = generate_diff_tree(output['all_node_lower'], output['all_node_upper'], output['real_lb'], output['real_ub'], output['lb'], output['ub'])
-    from matplotlib import pyplot as plt
-    print(plt.hist(out[4].flatten()))
-    plt.savefig('hist_sub3.png')
+    # out = generate_diff_tree(output['all_node_lower'], output['all_node_upper'], output['real_lb'], output['real_ub'], output['lb'], output['ub'])
+
+    # print(plt.hist(out[4].flatten()))
+    # plt.savefig('hist.png')
     # print(out)
     # for i, o in enumerate(out):
     #     if o.shape[0] > 1: 
