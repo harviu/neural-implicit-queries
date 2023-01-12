@@ -59,7 +59,7 @@ def main():
     args = parser.parse_args()
 
     # validate some inputs
-    if args.activation not in ['relu', 'elu', 'cos']:
+    if args.activation not in ['relu', 'elu', 'sin']:
         raise ValueError("unrecognized activation")
     if args.fit_mode not in ['occupancy', 'sdf']:
         raise ValueError("unrecognized activation")

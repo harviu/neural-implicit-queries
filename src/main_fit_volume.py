@@ -39,6 +39,7 @@ def main():
     # loss / data
     parser.add_argument("--n_epochs", type=int, default=100)
     # parser.add_argument("--n_samples", type=int, default=128 * 128 * 128)
+    parser.add_argument("--data_type", type=str, default='vorts', choices=['vorts', 'asteroid'])
     
     # training
     parser.add_argument("--lr", type=float, default=1e-2)
@@ -56,7 +57,7 @@ def main():
     args = parser.parse_args()
 
     # validate some inputs
-    if args.activation not in ['relu', 'elu', 'cos']:
+    if args.activation not in ['relu', 'elu', 'sin']:
         raise ValueError("unrecognized activation")
     if not args.output_file.endswith('.npz'):
         raise ValueError("output file should end with .npz")
@@ -76,7 +77,11 @@ def main():
    
     # load the input
     print(f"Loading data {args.input_file}")
-    data = load_bin_data(128, args.input_file)
+    if args.data_type == 'vorts':
+        data = load_vorts_data(128, args.input_file)
+    elif args.data_type == 'asteroid':
+        data = load_asteroid_data(513, args.input_file)
+        print(data.min(), data.max())
     print(f"  ...done")
 
     # preprocess (normalized to 0,1)

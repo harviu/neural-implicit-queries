@@ -87,6 +87,8 @@ def quick_mlp_spec(layer_sizes, activation):
                 spec_list.append(relu())
             elif activation == 'elu':
                 spec_list.append(elu())
+            elif activation == 'sin':
+                spec_list.append(sin())
             else: raise ValueError("unrecognized activation")
 
     spec_list.append(squeeze_last())

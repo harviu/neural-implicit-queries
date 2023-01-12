@@ -59,8 +59,12 @@ def get_ci_mc(aff_matrix, prob=0.95, mc_number = 1000): #monte carlo sampling
     idx = int((1-prob) / 2 * mc_number)
     return radius[idx], radius[-1-idx]
 
-def load_bin_data(res, data_path):
+def load_vorts_data(res, data_path):
     data = np.fromfile(data_path, '<f4')[3:].reshape(res,res,res)
+    return jnp.asarray(data)
+
+def load_asteroid_data(res, data_path):
+    data = np.fromfile(data_path, '<f4').reshape(res,res,res)
     return jnp.asarray(data)
 
 def build_grid_samples (res):
