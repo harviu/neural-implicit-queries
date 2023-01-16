@@ -23,7 +23,7 @@ def construct_uniform_unknown_levelset_tree_iter(
         ib, out_valid, out_lower, out_upper, out_n_valid,
         finished_interior_lower, finished_interior_upper, N_finished_interior,
         finished_exterior_lower, finished_exterior_upper, N_finished_exterior,
-        isovalue=0.,offset=0.
+        isovalue=0.,offset=0.,prob_threshold=0.95,num_grid=1
         ):
 
     N_in = node_lower.shape[0]
@@ -32,7 +32,7 @@ def construct_uniform_unknown_levelset_tree_iter(
     def eval_one_node(lower, upper):
 
         # perform an affine evaluation
-        node_type = func.classify_box(params, lower, upper, isovalue=isovalue, offset=offset)
+        node_type = func.classify_box(params, lower, upper, isovalue=isovalue, offset=offset, prob_threshold=prob_threshold, num_grid=num_grid)
 
         # use the largest length along any dimension as the split policy
         worst_dim = jnp.argmax(upper-lower, axis=-1)
@@ -168,6 +168,17 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
         out_lower = jnp.zeros((nb, 2*this_b, 3))
         out_upper = jnp.zeros((nb, 2*this_b, 3))
         total_n_valid = 0
+
+        # our prob estimation
+        prob_threshold = 0.95
+        num_grid = 8 ** 3 * 2 ** (n_splits - i_split)
+        # num_grid = 8*8*8 * (n_splits - i_split)
+        num_grid = min(2 ** 31 - 1, num_grid)
+
+        # the original conservative ranges
+        # prob_threshold = 1
+        # num_grid = 1
+
         for ib in range(n_occ): 
             out_valid, out_lower, out_upper, total_n_valid, \
             finished_interior_lower, finished_interior_upper, N_finished_interior, \
@@ -178,7 +189,7 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
                     ib, out_valid, out_lower, out_upper, total_n_valid, \
                     finished_interior_lower, finished_interior_upper, N_finished_interior, \
                     finished_exterior_lower, finished_exterior_upper, N_finished_exterior, \
-                    isovalue=isovalue, offset=offset)
+                    isovalue=isovalue, offset=offset, num_grid = num_grid, prob_threshold=prob_threshold)
 
         node_valid = out_valid
         node_lower = out_lower
@@ -354,11 +365,11 @@ def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_de
 
     return tri_pos_out, n_out_written
 
-def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=1000000):
+def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20):
 
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
-    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), isovalue=isovalue)
+    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), isovalue=isovalue, batch_process_size=batch_process_size)
     node_valid = out_dict['unknown_node_valid']
     node_lower = out_dict['unknown_node_lower']
     node_upper = out_dict['unknown_node_upper']
