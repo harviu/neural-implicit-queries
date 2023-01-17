@@ -9,11 +9,41 @@ import jax.numpy as jnp
 import datetime
 
 import numpy as np
+import numba as nb
 
 import polyscope as ps
 import polyscope.imgui as psim
 from vtkmodules import all as vtk
 from vtkmodules.util import numpy_support
+
+
+# function to get the gt iso voxels
+@nb.jit(nopython=True)
+def iso_voxels(np_array,iso_value):
+    grid_res = np_array.shape[0]
+    vol_res = grid_res -1
+    neg_array = np_array < iso_value
+    pos_array = np_array >= iso_value
+    return_array = []
+    for i in range(vol_res):
+        for j in range(vol_res):
+            for k in range(vol_res):
+                local_idx = (
+                    (i,i,i,i,i+1,i+1,i+1,i+1),
+                    (j,j,j+1,j+1,j,j,j+1,j+1),
+                    (k,k+1,k,k+1,k,k+1,k,k+1),
+                )
+                local_idx = np.array(local_idx).T
+                neg = False
+                pos = False
+                for idx in local_idx:
+                    if neg_array[idx[0],idx[1],idx[2]]:
+                        neg = True
+                    if pos_array[idx[0],idx[1],idx[2]]:
+                        pos = True
+                if pos and neg:
+                    return_array.append(i * vol_res * vol_res + j * vol_res + k)
+    return return_array
 
 def save_vtk(res, full_res, data, filename):
     vtk_data = vtk.vtkImageData()
@@ -76,10 +106,11 @@ def normalize_grid_samples(samples, res):
     #normalize samp
     rang = res - 1
     return (samples - rang / 2) / (rang/2)
-    
+
+@partial(jax.jit, static_argnames=("func", "batch_eval_size"))
 def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 2 ** 20):
     if flat_coords.shape[0] > batch_eval_size:
-        # for very large sets, break in to batches
+        # for very large sets, break into batches
         nb = flat_coords.shape[0] // batch_eval_size
         stragglers = flat_coords[nb*batch_eval_size:,:]
         batched_flat_coords = jnp.reshape(flat_coords[:nb*batch_eval_size,:], (-1, batch_eval_size, 3))

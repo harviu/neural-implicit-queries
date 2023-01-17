@@ -3,6 +3,7 @@ import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.stats import norm
 
 import jax
 import jax.numpy as jnp
@@ -31,7 +32,7 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
     # def classify_box(self, params, box_lower, box_upper):
         # pass
         
-    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0.):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., z = 2):
 
         d = box_center.shape[-1]
         v = box_vecs.shape[-2]
@@ -44,7 +45,8 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
         output = self.affine_func(params, input, {'ctx' : keep_ctx})
 
         # compute relevant bounds
-        may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=4)
+        # compute the justified prob_threshold
+        may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=z, box_dim=d)
         # may_lower, may_upper = may_contain_bounds(keep_ctx, output)
         # must_lower, must_upper = must_contain_bounds(keep_ctx, output)
 
@@ -149,13 +151,19 @@ def may_contain_bounds_mc(ctx, input,):
         right += err
     return base + left, base + right
 
-def may_contain_bounds_clt(ctx, input, z=2):
+def may_contain_bounds_clt(ctx, input, z=2, box_dim = 3):
     base, aff, err = input
-    rad = jnp.sum(aff ** 2, axis=-1)
+    box_aff = aff[:box_dim]
+    box_rad = jnp.sum(jnp.abs(box_aff), axis=0)
+    act_aff = aff[box_dim:]
+    rad_act_aff = jnp.sum(act_aff ** 2, axis=0)
     if err is not None:
-        rad + err * err
-    sigma = jnp.sqrt(rad / 3)
-    return base - z*sigma, base + z*sigma
+        rad_act_aff += err * err
+    sigma = jnp.sqrt(rad_act_aff / 3)
+    rad_clt = z * sigma + box_rad
+    rad = radius(input)
+    rad = jnp.where(rad_clt < rad, rad_clt, rad)
+    return base - rad, base + rad
 
 def truncate_affine(ctx, input):
     # do nothing if the input is a constant or we are not in truncate mode

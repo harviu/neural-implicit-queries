@@ -104,13 +104,14 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     data_bound = opts['data_bound']
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
+    n_mc_subcell=3
 
 
     print(f"do_hierarchical_mc {n_mc_depth}")
     
 
     with Timer("extract mesh"):
-        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=3)
+        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell)
         tri_pos.block_until_ready()
         tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
@@ -118,7 +119,6 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
 
     # Build the tree all over again so we can visualize it
     if do_viz_tree:
-        n_mc_subcell=3
         out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue)
 
         node_valid = out_dict['unknown_node_valid']
@@ -150,7 +150,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     if compute_dense_cost:
         # Construct the regular grid
         with Timer("full recon"):
-            grid_res = 2 ** n_mc_depth
+            grid_res = 2 ** n_mc_depth + 1
             ax_coords = jnp.linspace(-1., 1., grid_res)
             grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
             grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
@@ -432,7 +432,7 @@ def main():
 
     # Construct the regular grid
     with Timer("Time for coarse extraction"):
-        grid_res = 128
+        grid_res = 129
         ax_coords = jnp.linspace(-1., 1., grid_res)
         grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
         grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)

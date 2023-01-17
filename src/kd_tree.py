@@ -100,7 +100,7 @@ def construct_uniform_unknown_levelset_tree_iter(
            finished_exterior_lower, finished_exterior_upper, N_finished_exterior
 
 
-def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_terminate_thresh=None, split_depth=None, compress_after=False, with_childern=False, with_interior_nodes=False, with_exterior_nodes=False, isovalue=0., offset=0., batch_process_size=4096):
+def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_terminate_thresh=None, split_depth=None, compress_after=False, with_childern=False, with_interior_nodes=False, with_exterior_nodes=False, isovalue=0., offset=0., batch_process_size=4096, prob_threshold = 1.):
        
     # Validate input
     # ASSUMPTION: all of our bucket sizes larger than batch_process_size must be divisible by batch_process_size
@@ -151,7 +151,7 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
         quit_next = (N_curr_nodes >= node_terminate_thresh) or i_split+1 == n_splits
         do_continue_splitting = not quit_next
 
-        print(f"Uniform levelset tree. iter: {i_split}  N_curr_nodes: {N_curr_nodes}  bucket size: {init_bucket_size}  batch size: {this_b}  number of batches: {nb}  quit next: {quit_next}  do_continue_splitting: {do_continue_splitting}")
+        # print(f"Uniform levelset tree. iter: {i_split}  N_curr_nodes: {N_curr_nodes}  bucket size: {init_bucket_size}  batch size: {this_b}  number of batches: {nb}  quit next: {quit_next}  do_continue_splitting: {do_continue_splitting}")
 
         # enlarge the finished nodes if needed
         if with_interior_nodes:
@@ -170,14 +170,15 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
         total_n_valid = 0
 
         # our prob estimation
-        prob_threshold = 0.95
+        # prob_threshold = 0.95
         num_grid = 8 ** 3 * 2 ** (n_splits - i_split)
         # num_grid = 8*8*8 * (n_splits - i_split)
-        num_grid = min(2 ** 31 - 1, num_grid)
 
         # the original conservative ranges
         # prob_threshold = 1
         # num_grid = 1
+
+        num_grid = min(2 ** 31 - 1, num_grid)
 
         for ib in range(n_occ): 
             out_valid, out_lower, out_upper, total_n_valid, \
@@ -365,11 +366,11 @@ def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_de
 
     return tri_pos_out, n_out_written
 
-def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20):
+def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1.):
 
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
-    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), isovalue=isovalue, batch_process_size=batch_process_size)
+    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
     node_valid = out_dict['unknown_node_valid']
     node_lower = out_dict['unknown_node_lower']
     node_upper = out_dict['unknown_node_upper']
@@ -395,7 +396,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
     max_tri_round = this_b * 5 * (2**n_subcell_depth)**3
     for ib in range(n_occ):
 
-        print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
+        # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
         # expand the output array only lazily as needed
         while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
@@ -409,6 +410,117 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
 
     return tri_pos_out
 
+
+@partial(jax.jit, static_argnames=("func", "n_sub_depth", "batch_eval_size"))
+def identify_voxels_from_subcells(func, params, isovalue, n_sub_depth, cell_lower, cell_upper, batch_eval_size=4096):
+    _, _, vert_logical_coords = extract_cell.get_mc_data()
+
+    # construct the grid of subcells
+    side_n_sub_cells = 2**n_sub_depth
+    side_n_pts = (1+side_n_sub_cells)
+    side_coords0 = jnp.linspace(cell_lower[0], cell_upper[0], num=side_n_pts)
+    side_coords1 = jnp.linspace(cell_lower[1], cell_upper[1], num=side_n_pts)
+    side_coords2 = jnp.linspace(cell_lower[2], cell_upper[2], num=side_n_pts)
+    grid_coords0, grid_coords1, grid_coords2 = jnp.meshgrid(side_coords0, side_coords1, side_coords2, indexing='ij')
+    grid_coords = jnp.stack((grid_coords0, grid_coords1, grid_coords2), axis=-1)
+
+    # evaluate the function 
+    flat_coords = jnp.reshape(grid_coords, (-1,3))
+    flat_vals = utils.evaluate_implicit_fun(func, params, flat_coords, batch_eval_size)
+    
+    # add the iso-values
+    flat_vals -= isovalue
+    grid_vals = jnp.reshape(flat_vals, (side_n_pts, side_n_pts, side_n_pts))
+
+    # logical grid of subcell inds
+    side_inds = jnp.arange(side_n_sub_cells)
+    grid_inds0, grid_inds1, grid_inds2 = jnp.meshgrid(side_inds, side_inds, side_inds, indexing='ij')
+    grid_inds = jnp.stack((grid_inds0, grid_inds1, grid_inds2), axis=-1)
+    subcell_inds = jnp.reshape(grid_inds, (-1,3))
+
+    # compute the extents of each cell
+    subcell_delta = (cell_upper - cell_lower) / side_n_sub_cells
+    subcell_lower = cell_lower[None,:] + subcell_inds * subcell_delta[None,:]
+    subcell_upper = subcell_lower + subcell_delta[None,:]
+
+    # compute the indices, assuming the bound is -1, 1
+    subcell_glo_indices = jnp.round((subcell_lower+1) / subcell_delta).astype(jnp.int32)
+    # convert to 1d
+    side_n = jnp.round(2 / subcell_delta).astype(jnp.int32)
+    subcell_glo_indices = side_n[1] * side_n[2] * subcell_glo_indices[:, 0] + side_n[2] * subcell_glo_indices[:, 1] + subcell_glo_indices[:, 2]
+
+    # fetch the function values for each cell
+    subcell_vert_inds = subcell_inds[:,None,:] + vert_logical_coords[None,:,:]
+    subcell_vert_vals = grid_vals.at[subcell_vert_inds[:,:,0], subcell_vert_inds[:,:,1], subcell_vert_inds[:,:,2]].get()
+
+    # check for iso-voxels
+    subcell_vert_bool = (subcell_vert_vals > 0).sum(-1)
+    subcell_vert_bool = jnp.where(subcell_vert_bool==8, 0, subcell_vert_bool)
+    subcell_indices_valid = subcell_vert_bool.astype(jnp.bool_)
+
+    return subcell_glo_indices, subcell_indices_valid
+
+@partial(jax.jit, static_argnames=("func","n_subcell_depth"), donate_argnums=(6,))
+def hierarchical_iso_voxels_extract_iter(func, params, n_subcell_depth, node_valid, node_lower, node_upper, indices_out, n_out_written, isovalue):
+
+    # run the extraction routine
+    indices, indices_valid = jax.vmap(partial(identify_voxels_from_subcells, func, params, isovalue, n_subcell_depth))(node_lower, node_upper) 
+    indices_valid = jnp.logical_and(indices_valid, node_valid[:,None])
+   
+    # flatten out the generated triangles
+    indices = jnp.reshape(indices, (-1, ))
+    indices_valid = jnp.reshape(indices_valid, (-1,))
+
+    # write the result
+    out_inds = utils.enumerate_mask(indices_valid, fill_value=indices_out.shape[0])
+    out_inds += n_out_written
+    indices_out = indices_out.at[out_inds].set(indices, mode='drop')
+    n_out_written += jnp.sum(indices_valid)
+
+    return indices_out, n_out_written
+
+def hierarchical_iso_voxels(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1.):
+
+    # Build a tree over the isosurface
+    # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
+    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, \
+        split_depth=3*(depth-n_subcell_depth), isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
+    node_valid = out_dict['unknown_node_valid']
+    node_lower = out_dict['unknown_node_lower']
+    node_upper = out_dict['unknown_node_upper']
+
+    # Extract triangle from the valid nodes (do it in batches in case there are a lot)
+    extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_subcell_depth)**3)
+    extract_batch_size = get_next_bucket_size(extract_batch_size)
+    N_cell = node_valid.shape[0]
+    N_valid = int(jnp.sum(node_valid))
+    n_out_written = 0
+    indices_out = jnp.zeros((1, ), jnp.int32)
+
+    init_bucket_size = node_lower.shape[0]
+    this_b = min(extract_batch_size, init_bucket_size)
+    node_valid = jnp.reshape(node_valid, (-1, this_b))
+    node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
+    node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
+    nb = node_lower.shape[0]
+    n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
+    max_tri_round = this_b * 5 * (2**n_subcell_depth)**3
+    for ib in range(n_occ):
+
+        # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
+
+        # expand the output array only lazily as needed
+        while(indices_out.shape[0] - n_out_written < max_tri_round):
+            indices_out = utils.resize_array_axis(indices_out, 2*indices_out.shape[0])
+        
+        indices_out, n_out_written = hierarchical_iso_voxels_extract_iter(func, params, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], indices_out, n_out_written, isovalue)
+
+    # clip the result triangles
+    # TODO bucket and mask here? need to if we want this in a JIT loop
+    indices_out = indices_out[:n_out_written]
+    print("[unknown voxels]", N_valid)
+
+    return indices_out
    
 @partial(jax.jit, static_argnames=("func_tuple","viz_nodes"))
 def find_any_intersection_iter(

@@ -80,7 +80,7 @@ def main():
     if args.data_type == 'vorts':
         data = load_vorts_data(128, args.input_file)
     elif args.data_type == 'asteroid':
-        data = load_asteroid_data(513, args.input_file)
+        data = load_asteroid_data(500, args.input_file)
         print(data.min(), data.max())
     print(f"  ...done")
 
@@ -91,7 +91,7 @@ def main():
     data = (data - 0.5) * 2
 
     # sample training points
-    print(f"Sampling {len(data)} training points...")
+    print(f"Sampling {len(data.flatten())} training points...")
     samp, samp_v = sample_volume(data.shape[0], data)
 
 
@@ -197,20 +197,22 @@ def main():
         loss_sum = jnp.mean(loss_terms)
         return loss_sum
 
-    def cal_PSNR(params):
+    def cal_PSNR(params, batches_in, batches_out):
 
         add_full_params(params)
+        total_sse = 0
+        n_total = 0
    
-        def loss_one(params, coords):
+        def sse(params, coords, targets):
             pred = implicit_func(params, coords)
-            return pred
+            return (pred - targets) ** 2
         
-        sample = build_grid_samples(data.shape[0])
-        sample = normalize_grid_samples(sample, data.shape[0])
-        sample = jnp.asarray(sample, dtype = jnp.float32)
-        pred = jax.vmap(partial(loss_one, params))(sample)
-        pred = pred.reshape(data.shape)
-        mse = ((data - pred) ** 2).mean()
+        for i in range(len(batches_in)):
+            coords, targets = batches_in[i], batches_out[i]
+            sse_terms = jax.vmap(partial(sse, params))(coords, targets)
+            total_sse += float(jnp.sum(sse_terms))
+            n_total += len(coords)
+        mse = total_sse / n_total
         # assuming the range is -1,1
         psnr = 10 * jnp.log10(4/mse)
         return psnr
@@ -234,17 +236,18 @@ def main():
         n_total = 0
 
         for i_b in range(n_batches):
+            actual_batch_size = len(batches_in[i_b,...])
 
             loss, opt_state = train_step(i_epoch, i_step, opt_state, batches_in[i_b,...], batches_out[i_b,...], batches_weight[i_b,...])
 
             loss = float(loss)
-            losses.append(loss)
-            n_total += args.batch_size
+            losses.append(loss * actual_batch_size) # add up the batch size
+            n_total += actual_batch_size
             i_step += 1
 
-        mean_loss = np.mean(np.array(losses))
+        mean_loss = np.sum(np.array(losses)) / n_total
         opt_params = opt.params_fn(opt_state)
-        psnr = cal_PSNR(opt_params)
+        psnr = cal_PSNR(opt_params, batches_in, batches_out) 
 
         print(f"== Epoch {i_epoch} / {args.n_epochs}   loss: {mean_loss:.6f}  PSNR: {psnr}")
 
@@ -256,7 +259,7 @@ def main():
 
             print(f"Saving result to {args.output_file}")
             mlp.save(args.output_file, best_params)
-            print(f"  ...done")
+            print(f"  ...done", flush=True)
 
     
     # save the result
