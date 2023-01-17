@@ -98,7 +98,7 @@ def do_sample_surface(opts, implicit_func, params, n_samples, sample_width, n_no
 
 
 
-def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz_tree, compute_dense_cost):
+def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz_tree, compute_dense_cost, t):
 
 
     data_bound = opts['data_bound']
@@ -111,7 +111,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     
 
     with Timer("extract mesh"):
-        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell)
+        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t)
         tri_pos.block_until_ready()
         tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
@@ -119,7 +119,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
 
     # Build the tree all over again so we can visualize it
     if do_viz_tree:
-        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue)
+        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue, prob_threshold=t)
 
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']
@@ -257,6 +257,7 @@ def main():
     opts['tree_max_depth'] = 12
     opts['tree_split_aff'] = False
     cast_frustum = False
+    t = 0.95 # probability threshold
     mode = 'affine_all'
     modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
     affine_opts = {}
@@ -283,7 +284,7 @@ def main():
 
     def callback():
 
-        nonlocal implicit_func, params, mode, modes, cast_frustum, debug_log_compiles, debug_disable_jit, debug_debug_nans, shade_style, surf_color, n_sample_pts, sample_width, n_node_thresh, do_uniform_sample, do_viz_tree, n_mc_depth, compute_dense_cost, n_closest_point
+        nonlocal implicit_func, params, t, mode, modes, cast_frustum, debug_log_compiles, debug_disable_jit, debug_debug_nans, shade_style, surf_color, n_sample_pts, sample_width, n_node_thresh, do_uniform_sample, do_viz_tree, n_mc_depth, compute_dense_cost, n_closest_point
             
     
         ## Options for general affine evaluation
@@ -321,11 +322,30 @@ def main():
                     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(args.input, mode=mode, **affine_opts)
 
 
+            _, t = psim.InputFloat("threshold", t)
+
             psim.PopItemWidth()
             psim.TreePop()
 
 
         psim.SetNextItemOpen(True, psim.ImGuiCond_FirstUseEver)
+        
+        if psim.TreeNode("Extract mesh"):
+            psim.PushItemWidth(100)
+
+            if psim.Button("Extract"):
+                do_hierarchical_mc(opts, implicit_func, params, args.iso, n_mc_depth, do_viz_tree, compute_dense_cost, t = t)
+
+            psim.SameLine()
+            _, n_mc_depth = psim.InputInt("n_mc_depth", n_mc_depth)
+            _, do_viz_tree = psim.Checkbox("viz tree", do_viz_tree)
+            psim.SameLine()
+            _, compute_dense_cost = psim.Checkbox("compute dense cost", compute_dense_cost)
+
+            
+            psim.PopItemWidth()
+            psim.TreePop()
+            
         if psim.TreeNode("Raycast"):
             psim.PushItemWidth(100)
         
@@ -359,23 +379,6 @@ def main():
             _, do_viz_tree = psim.Checkbox("viz tree", do_viz_tree)
             psim.SameLine()
             _, do_uniform_sample = psim.Checkbox("also uniform sample", do_uniform_sample)
-
-            
-            psim.PopItemWidth()
-            psim.TreePop()
-
-
-        if psim.TreeNode("Extract mesh"):
-            psim.PushItemWidth(100)
-
-            if psim.Button("Extract"):
-                do_hierarchical_mc(opts, implicit_func, params, args.iso, n_mc_depth, do_viz_tree, compute_dense_cost)
-
-            psim.SameLine()
-            _, n_mc_depth = psim.InputInt("n_mc_depth", n_mc_depth)
-            _, do_viz_tree = psim.Checkbox("viz tree", do_viz_tree)
-            psim.SameLine()
-            _, compute_dense_cost = psim.Checkbox("compute dense cost", compute_dense_cost)
 
             
             psim.PopItemWidth()
