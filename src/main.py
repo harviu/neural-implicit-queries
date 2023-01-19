@@ -30,19 +30,21 @@ import slope_interval_layers
 def dense_recon():
     # Construct the regular grid
     with Timer("full recon"):
-        grid_res = 2 ** n_mc_depth + 1
-        ax_coords = jnp.linspace(-1., 1., grid_res)
-        grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
+        grid_res = (150, 100, 100)
+        ax_coords = jnp.linspace(-1., 1., grid_res[0])
+        ay_coords = jnp.linspace(-1., 1., grid_res[1])
+        az_coords = jnp.linspace(-1., 1., grid_res[2])
+        grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ay_coords, az_coords, indexing='ij')
         grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
-        # sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
         sdf_vals = evaluate_implicit_fun(implicit_func, params, grid, batch_process_size)
-        sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
+        sdf_vals = np.array(sdf_vals, copy=True)
+        sdf_vals = sdf_vals.reshape(grid_res)
         # marching cubes
-        delta = (grid[1,2] - grid[0,2]).item()
+        delta = 1 / (np.array(grid_res) - 1)
         bbox_min = grid[0,:]
-        verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))
+        verts, faces, normals, values = measure.marching_cubes(sdf_vals, level=isovalue, spacing=delta)
         verts = verts + bbox_min[None,:]
-        return np.array(sdf_vals)
+        return sdf_vals
 
 def hierarchical(t):
 
@@ -62,25 +64,32 @@ def hierarchical(t):
 
 if __name__ == "__main__":
     data_bound = 1
-    test_model = 'sample_inputs/vorts_sin_5_128.npz'
-    isovalue = -0.5
-    n_mc_depth = 8
-    t = 1
+    test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+    isovalue = 0
+    n_mc_depth = 7
+    t = 0.95
     batch_process_size = 2 ** 12
 
     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode='affine_all')
+    # print(params)
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
     n_mc_subcell=3
+    sdf_vals = dense_recon()
+    print(sdf_vals.dtype)
+    print(sdf_vals.shape)
+    print(np.isfortran(sdf_vals))
+    sdf_vals.tofile('test.bin')
+
     # warm up
-    hierarchical(t)
-    dense_recon()
+    # hierarchical(t)
+    # dense_recon()
 
-    # time
-    indices = hierarchical(t)
-    vals_np = dense_recon()
+    # # time
+    # indices = hierarchical(t)
+    # vals_np = dense_recon()
 
-    # correctness
-    iso = iso_voxels(vals_np, isovalue)
-    iou = len(np.intersect1d(indices, iso, True)) / len(np.union1d(indices, iso))
-    print('[iou]', iou)
+    # # correctness
+    # iso = iso_voxels(vals_np, isovalue)
+    # iou = len(np.intersect1d(indices, iso, True)) / len(np.union1d(indices, iso))
+    # print('[iou]', iou)

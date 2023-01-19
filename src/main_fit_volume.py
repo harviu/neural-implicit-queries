@@ -39,7 +39,7 @@ def main():
     # loss / data
     parser.add_argument("--n_epochs", type=int, default=100)
     # parser.add_argument("--n_samples", type=int, default=128 * 128 * 128)
-    parser.add_argument("--data_type", type=str, default='vorts', choices=['vorts', 'asteroid'])
+    parser.add_argument("--data_type", type=str, default='vorts', choices=['vorts', 'asteroid', 'combustion', 'ethanediol'])
     
     # training
     parser.add_argument("--lr", type=float, default=1e-2)
@@ -81,22 +81,31 @@ def main():
         data = load_vorts_data(128, args.input_file)
     elif args.data_type == 'asteroid':
         data = load_asteroid_data(500, args.input_file)
-        print(data.min(), data.max())
-    print(f"  ...done")
+    elif args.data_type == 'combustion':
+        data = load_combustion_data(args.input_file)
+    elif args.data_type == 'ethanediol':
+        data = load_ethanediol_data(args.input_file)
 
-    # preprocess (normalized to 0,1)
-    data_min = data.min()
-    data_max = data.max()
-    data = (data - data_min) / (data_max - data_min)
-    data = (data - 0.5) * 2
+    # preprocess (normalized to -1,1)
+    # data = jnp.log2(data+1)
+    std, mean = data.std(), data.mean()
+    data = (data - mean) / std
+    data_max, data_min = data.max(), data.min()
+    # data = (data - data_min) / (data_max - data_min)
+    # data = (data - 0.5) * 2
+    print(data.shape, data.min(), data.max())
+    print(f"  ...done")
 
     # sample training points
     print(f"Sampling {len(data.flatten())} training points...")
-    samp, samp_v = sample_volume(data.shape[0], data)
-
+    samp, samp_v = sample_volume(data.shape, data)
 
     samp_target = samp_v
-    samp_weight = jnp.ones_like(samp_target)
+    if args.data_type == 'combustion':
+        # samp_weight = samp_target + 1.1
+        samp_weight = jnp.ones_like(samp_target)
+    else:
+        samp_weight = jnp.ones_like(samp_target)
 
     print(f"  ...done")
 
@@ -191,11 +200,11 @@ def main():
    
         def loss_one(params, coords, target, weight):
             pred = implicit_func(params, coords)
-            return jnp.abs(pred - target)
+            return (pred - target) ** 2 * weight
         
         loss_terms = jax.vmap(partial(loss_one, params))(batch_coords, batch_target, batch_weight)
-        loss_sum = jnp.mean(loss_terms)
-        return loss_sum
+        loss_mean = jnp.mean(loss_terms)
+        return loss_mean
 
     def cal_PSNR(params, batches_in, batches_out):
 
@@ -213,8 +222,7 @@ def main():
             total_sse += float(jnp.sum(sse_terms))
             n_total += len(coords)
         mse = total_sse / n_total
-        # assuming the range is -1,1
-        psnr = 10 * jnp.log10(4/mse)
+        psnr = 10 * jnp.log10((data_max - data_min)**2/mse)
         return psnr
 
     @jax.jit
@@ -244,10 +252,11 @@ def main():
             losses.append(loss * actual_batch_size) # add up the batch size
             n_total += actual_batch_size
             i_step += 1
-
         mean_loss = np.sum(np.array(losses)) / n_total
-        opt_params = opt.params_fn(opt_state)
-        psnr = cal_PSNR(opt_params, batches_in, batches_out) 
+        # directly use the average loss to calculate
+        psnr = 10 * jnp.log10((data_max - data_min)**2/mean_loss)
+        # opt_params = opt.params_fn(opt_state)
+        # psnr = cal_PSNR(opt_params, batches_in, batches_out) 
 
         print(f"== Epoch {i_epoch} / {args.n_epochs}   loss: {mean_loss:.6f}  PSNR: {psnr}")
 

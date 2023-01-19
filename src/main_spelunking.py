@@ -111,15 +111,15 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     
 
     with Timer("extract mesh"):
-        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t)
+        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=4096)
         tri_pos.block_until_ready()
         tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
-    ps.register_surface_mesh("extracted mesh", np.array(tri_pos), np.array(tri_inds))
+    ps.register_surface_mesh("extracted mesh", np.array(tri_pos), np.array(tri_inds), enabled=False)
 
     # Build the tree all over again so we can visualize it
     if do_viz_tree:
-        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue, prob_threshold=t)
+        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue, prob_threshold=t, batch_process_size=4096)
 
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']
@@ -127,7 +127,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         node_lower = node_lower[node_valid,:]
         node_upper = node_upper[node_valid,:]
         verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
-        ps_vol = ps.register_volume_mesh("unknown tree nodes", np.array(verts), hexes=np.array(inds))
+        ps_vol = ps.register_volume_mesh("unknown tree nodes", np.array(verts), hexes=np.array(inds), enabled=False)
 
         node_valid = out_dict['interior_node_valid']
         node_lower = out_dict['interior_node_lower']
@@ -136,7 +136,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         node_upper = node_upper[node_valid,:]
         if node_lower.shape[0] > 0:
             verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
-            ps_vol = ps.register_volume_mesh("interior tree nodes", np.array(verts), hexes=np.array(inds))
+            ps_vol = ps.register_volume_mesh("interior tree nodes", np.array(verts), hexes=np.array(inds), enabled=False)
         
         node_valid = out_dict['exterior_node_valid']
         node_lower = out_dict['exterior_node_lower']
@@ -145,7 +145,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         node_upper = node_upper[node_valid,:]
         if node_lower.shape[0] > 0:
             verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
-            ps_vol = ps.register_volume_mesh("exterior tree nodes", np.array(verts), hexes=np.array(inds))
+            ps_vol = ps.register_volume_mesh("exterior tree nodes", np.array(verts), hexes=np.array(inds), enabled=False)
 
     if compute_dense_cost:
         # Construct the regular grid
@@ -156,12 +156,12 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
             grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
             delta = (grid[1,2] - grid[0,2]).item()
             # sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
-            sdf_vals = evaluate_implicit_fun(implicit_func, params, grid)
+            sdf_vals = evaluate_implicit_fun(implicit_func, params, grid, batch_eval_size=4096)
             sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
             bbox_min = grid[0,:]
             verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))
             verts = verts + bbox_min[None,:]
-        ps.register_surface_mesh("coarse shape preview", verts, faces) 
+        ps.register_surface_mesh("coarse shape preview", verts, faces, enabled=False) 
 
 def do_closest_point(opts, func, params, n_closest_point):
 
@@ -345,7 +345,7 @@ def main():
             
             psim.PopItemWidth()
             psim.TreePop()
-            
+
         if psim.TreeNode("Raycast"):
             psim.PushItemWidth(100)
         
@@ -434,16 +434,21 @@ def main():
     # Visualize the data via quick coarse marching cubes, so we have something to look at
 
     # Construct the regular grid
-    with Timer("Time for coarse extraction"):
-        grid_res = 129
-        ax_coords = jnp.linspace(-1., 1., grid_res)
-        grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
+    with Timer("full recon"):
+        grid_res = (129, 129, 129)
+        ax_coords = jnp.linspace(-1., 1., grid_res[0])
+        ay_coords = jnp.linspace(-1., 1., grid_res[1])
+        az_coords = jnp.linspace(-1., 1., grid_res[2])
+        grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ay_coords, az_coords, indexing='ij')
         grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
-        delta = (grid[1,2] - grid[0,2]).item()
         sdf_vals = evaluate_implicit_fun(implicit_func, params, grid)
-        sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
+        sdf_vals = np.array(sdf_vals, copy=True)
+        sdf_vals = sdf_vals.reshape(grid_res, order='C')
+        print(sdf_vals.min(), sdf_vals.max())
+        # marching cubes
+        delta = 2 / (np.array(grid_res) - 1)
         bbox_min = grid[0,:]
-        verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=args.iso, spacing=(delta, delta, delta))
+        verts, faces, normals, values = measure.marching_cubes(sdf_vals, level=args.iso, spacing=delta)
         verts = verts + bbox_min[None,:]
     ps.register_surface_mesh("coarse shape preview", verts, faces) 
    

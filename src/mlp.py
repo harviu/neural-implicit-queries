@@ -262,14 +262,17 @@ apply_func['default']['dense'] = default_dense
 def initialize_dense(rngkey=None, A=None, b=None):
     if isinstance(A, tuple): # if A needs initialization, it is a tuple giving the size
         check_rng_key(rngkey)
+        in_feature, out_feature = A
+        scale = (1/in_feature) ** 0.5
         subkey, rngkey = jax.random.split(rngkey)
-        initF = jax.nn.initializers.glorot_normal()
+        initF = jax.nn.initializers.he_uniform()
         A = initF(subkey, A)
-    if isinstance(b, tuple): # if b needs initialization, it is a tuple giving the size
-        check_rng_key(rngkey)
-        subkey, rngkey = jax.random.split(rngkey)
-        initF = jax.nn.initializers.normal()
-        b = initF(subkey, b)
+        if isinstance(b, tuple): # if b needs initialization, it is a tuple giving the size
+            # only initialize b when a is initialized
+            check_rng_key(rngkey)
+            subkey, rngkey = jax.random.split(rngkey)
+            initF = jax.nn.initializers.uniform(2 * scale)
+            b = initF(subkey, b) - scale
 
     out_dict = { 'A' : A }
     if b is not None:

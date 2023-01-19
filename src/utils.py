@@ -97,15 +97,34 @@ def load_asteroid_data(res, data_path):
     data = np.fromfile(data_path, '<f4').reshape(res,res,res)
     return jnp.asarray(data)
 
+def load_combustion_data(data_path):
+    # paraview is in zyx order...
+    data = np.fromfile(data_path, '<f4').reshape(120, 720, 480)
+    # crop the center 330 ^ 3
+    container = np.zeros((330,) * 3, np.float32)
+    container[165 - 60:165 + 60,:,:] = data[:, 360-165:360+165, 240-165:240+165]
+    return jnp.asarray(container)
+
+def load_ethanediol_data(data_path):
+    data = np.fromfile(data_path, '<f4').reshape(134,116,115)
+    return jnp.asarray(data)
+
 def build_grid_samples (res):
-    X, Y, Z = np.mgrid[0:res, 0:res, 0:res]
+    if isinstance(res, int):
+        X, Y, Z = np.mgrid[0:res, 0:res, 0:res]
+    else:
+        assert len(res) == 3
+        X, Y, Z = np.mgrid[0:res[0], 0:res[1], 0:res[2]]
     full = np.stack([X.flatten(),Y.flatten(),Z.flatten()],axis=-1)
     return full
 
-def normalize_grid_samples(samples, res):
-    #normalize samp
-    rang = res - 1
-    return (samples - rang / 2) / (rang/2)
+def normalize_grid_samples(samples, res, keep_ratio = True):
+    res = np.array(res)
+    if keep_ratio:
+        return (samples * 2 - (res - 1)) / (res.max()-1)
+    else:
+        return (samples * 2 - (res - 1)) / (res - 1)
+
 
 @partial(jax.jit, static_argnames=("func", "batch_eval_size"))
 def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 2 ** 20):
@@ -129,7 +148,7 @@ def evaluate_implicit_fun(func, params, flat_coords, batch_eval_size = 2 ** 20):
 def sample_volume(res, data):
     samp = build_grid_samples(res)
     samp_v = data[tuple(samp.T)]
-    samp = normalize_grid_samples(samp, res)
+    samp = normalize_grid_samples(samp, res, keep_ratio = False)
     samp = jnp.asarray(samp, dtype= jnp.float32)
     samp_v = jnp.asarray(samp_v, dtype=jnp.float32)
     return samp, samp_v
