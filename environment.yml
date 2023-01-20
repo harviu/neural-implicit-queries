@@ -1,4 +1,4 @@
-name: implicit-env-cpu
+name: implicit-env
 channels:
   - conda-forge
   - defaults
