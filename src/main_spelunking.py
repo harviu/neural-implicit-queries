@@ -105,13 +105,13 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
     n_mc_subcell=3
-
+    batch_size = 2 ** 13
 
     print(f"do_hierarchical_mc {n_mc_depth}")
     
 
     with Timer("extract mesh"):
-        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=4096)
+        tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size)
         tri_pos.block_until_ready()
         tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
@@ -119,7 +119,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
 
     # Build the tree all over again so we can visualize it
     if do_viz_tree:
-        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue, prob_threshold=t, batch_process_size=4096)
+        out_dict = construct_uniform_unknown_levelset_tree(implicit_func, params, lower, upper, split_depth=3*(n_mc_depth-n_mc_subcell), with_interior_nodes=True, with_exterior_nodes=True, isovalue=isovalue, prob_threshold=t, batch_process_size=batch_size)
 
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']
@@ -156,7 +156,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
             grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
             delta = (grid[1,2] - grid[0,2]).item()
             # sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
-            sdf_vals = evaluate_implicit_fun(implicit_func, params, grid, batch_eval_size=4096)
+            sdf_vals = evaluate_implicit_fun(implicit_func, params, grid, batch_eval_size=batch_size)
             sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
             bbox_min = grid[0,:]
             verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))

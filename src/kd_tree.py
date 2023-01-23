@@ -170,13 +170,9 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
         total_n_valid = 0
 
         # our prob estimation
-        # prob_threshold = 0.95
         num_grid = 8 ** 3 * 2 ** (n_splits - i_split)
-        # num_grid = 8*8*8 * (n_splits - i_split)
-
-        # the original conservative ranges
-        # prob_threshold = 1
-        # num_grid = 1
+        # num_grid = 8 ** 3 * (n_splits - i_split)
+        # num_grid = 2 ** (n_splits - i_split)
 
         num_grid = min(2 ** 31 - 1, num_grid)
 

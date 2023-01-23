@@ -101,8 +101,10 @@ def load_combustion_data(data_path):
     # paraview is in zyx order...
     data = np.fromfile(data_path, '<f4').reshape(120, 720, 480)
     # crop the center 330 ^ 3
-    container = np.zeros((330,) * 3, np.float32)
-    container[165 - 60:165 + 60,:,:] = data[:, 360-165:360+165, 240-165:240+165]
+    # container = np.zeros((330,) * 3, np.float32)
+    # container[165 - 60:165 + 60,:,:] = data[:, 360-165:360+165, 240-165:240+165]
+    # crop the center
+    container = data[:, 360-170:360+170, :]
     return jnp.asarray(container)
 
 def load_ethanediol_data(data_path):

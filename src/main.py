@@ -30,7 +30,7 @@ import slope_interval_layers
 def dense_recon():
     # Construct the regular grid
     with Timer("full recon"):
-        grid_res = (150, 100, 100)
+        grid_res = (2 ** n_mc_depth + 1, 2 ** n_mc_depth + 1, 2 ** n_mc_depth + 1)
         ax_coords = jnp.linspace(-1., 1., grid_res[0])
         ay_coords = jnp.linspace(-1., 1., grid_res[1])
         az_coords = jnp.linspace(-1., 1., grid_res[2])
@@ -64,32 +64,39 @@ def hierarchical(t):
 
 if __name__ == "__main__":
     data_bound = 1
-    test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
-    isovalue = 0
-    n_mc_depth = 7
-    t = 0.95
+    test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
+    # test_model = 'sample_inputs/jet_crop_z_elu_16_128.npz'
+    # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+    isovalue = 1
+    n_mc_depth = 10
+    t = 1
     batch_process_size = 2 ** 12
+    mode = 'affine_all'
+    # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
+    affine_opts = {}
+    affine_opts['affine_n_truncate'] = 512
+    affine_opts['affine_n_append'] = 4
+    affine_opts['sdf_lipschitz'] = 1.
+    truncate_policies = ['absolute', 'relative']
+    affine_opts['affine_truncate_policy'] = 'absolute'
 
-    implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode='affine_all')
+    implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
     # print(params)
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
     n_mc_subcell=3
-    sdf_vals = dense_recon()
-    print(sdf_vals.dtype)
-    print(sdf_vals.shape)
-    print(np.isfortran(sdf_vals))
-    sdf_vals.tofile('test.bin')
 
     # warm up
-    # hierarchical(t)
-    # dense_recon()
+    print("== Warming up")
+    hierarchical(t)
+    dense_recon()
 
-    # # time
-    # indices = hierarchical(t)
-    # vals_np = dense_recon()
+    # time
+    print("== Test")
+    indices = hierarchical(t)
+    vals_np = dense_recon()
 
-    # # correctness
-    # iso = iso_voxels(vals_np, isovalue)
-    # iou = len(np.intersect1d(indices, iso, True)) / len(np.union1d(indices, iso))
-    # print('[iou]', iou)
+    # correctness
+    iso = iso_voxels(vals_np, isovalue)
+    iou = len(np.intersect1d(indices, iso, True)) / len(np.union1d(indices, iso))
+    print('[iou]', iou)

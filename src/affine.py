@@ -179,28 +179,33 @@ def truncate_affine(ctx, input):
     if aff.shape[0] <= n_keep:
         return input
 
+    v = ctx.affine_domain_terms
+    box_aff = aff[:v]
+    act_aff = aff[v:]
+
     # compute the magnitudes of each affine value
     # TODO fanicier policies?
     if ctx.truncate_policy == 'absolute':
-        affine_mags = jnp.sum(jnp.abs(aff), axis=-1)
+        affine_mags = jnp.sum(jnp.abs(act_aff), axis=-1)
     elif ctx.truncate_policy == 'relative':
-        affine_mags = jnp.sum(jnp.abs(aff), axis=-1) / jnp.abs(base)
+        affine_mags = jnp.sum(jnp.abs(act_aff / base[None,:]), axis=-1)
     else:
         raise RuntimeError("bad policy")
 
 
     # sort the affine terms by by magnitude
     sort_inds = jnp.argsort(-affine_mags, axis=-1) # sort to decreasing order
-    aff = aff[sort_inds,:]
+    act_aff = act_aff[sort_inds,:]
 
     # keep the n_keep highest-magnitude entries
-    aff_keep = aff[:n_keep,:]
-    aff_drop = aff[n_keep:,:]
+    aff_keep = act_aff[:n_keep,:]
+    aff_out = jnp.concatenate((box_aff, aff_keep), axis=0)
 
     # for all the entries we aren't keeping, add their contribution to the interval error
+    aff_drop = act_aff[n_keep:,:]
     err = err + jnp.sum(jnp.abs(aff_drop), axis=0)
 
-    return base, aff_keep, err
+    return base, aff_out, err
 
 def apply_linear_approx(ctx, input, alpha, beta, delta):
     base, aff, err = input
