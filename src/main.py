@@ -6,26 +6,14 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-import argparse
-import matplotlib
-import matplotlib.pyplot as plt
-import imageio
 from skimage import measure
 
 
 # Imports from this project
-import render, geometry, queries
 from geometry import *
 from utils import *
-import affine
-import slope_interval
-import sdf
-import mlp
 from kd_tree import *
-from implicit_function import SIGN_UNKNOWN, SIGN_POSITIVE, SIGN_NEGATIVE
 import implicit_mlp_utils, extract_cell
-import affine_layers
-import slope_interval_layers
 
 def dense_recon():
     # Construct the regular grid
@@ -64,13 +52,34 @@ def hierarchical(t):
 
 if __name__ == "__main__":
     data_bound = 1
-    test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
-    # test_model = 'sample_inputs/jet_crop_z_elu_16_128.npz'
-    # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
-    isovalue = 1
-    n_mc_depth = 10
-    t = 1
+    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
+    data_type = data_opts[0]
+    isovalue = 0
+    if data_type == 'combustion':
+        test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
+        input_file = '../data/jet_chi_0054.dat'
+        bounds = np.array([479, 339, 119])
+        isovalue = 1
+    elif data_type == 'vorts':
+        test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+        input_file = '../data/vorts01.data'
+        bounds = np.array([127, 127, 127])
+    elif data_type == 'asteroid':
+        test_model = 'sample_inputs/v02_z_lr_elu_5_128.npz'
+        input_file = '../data/99_500_v02.bin'
+        bounds = np.array([499, 499, 499])
+    elif data_type == 'ethanediol':
+        test_model = 'sample_inputs/eth_elu_5_128.npz'
+        input_file = '../data/ethanediol.bin'
+        bounds = np.array([115, 116, 134])
+    data = load_data(data_type, input_file)
+    mean = data.mean()
+    std = data.std()
+
+    n_mc_depth = 8
+    t = 0.95
     batch_process_size = 2 ** 12
+
     mode = 'affine_all'
     # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
     affine_opts = {}
@@ -88,8 +97,8 @@ if __name__ == "__main__":
 
     # warm up
     print("== Warming up")
-    hierarchical(t)
-    dense_recon()
+    indices = hierarchical(t)
+    vals_np = dense_recon()
 
     # time
     print("== Test")
@@ -97,6 +106,26 @@ if __name__ == "__main__":
     vals_np = dense_recon()
 
     # correctness
-    iso = iso_voxels(vals_np, isovalue)
-    iou = len(np.intersect1d(indices, iso, True)) / len(np.union1d(indices, iso))
-    print('[iou]', iou)
+    # if t<1:
+    #     with Timer("Calcuate IoU"):
+    #         iso = iso_voxels(np.asarray(vals_np), isovalue)
+    #         true_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
+    #         true_mask[iso] = True
+    #         our_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
+    #         our_mask[indices] = True
+    #         iou = (true_mask & our_mask).sum() / (true_mask | our_mask).sum()
+    #         print('[iou]', iou)
+
+    # compare tree
+    num_level = (n_mc_depth - n_mc_subcell) * 3
+    true_kd_array = kd_tree_array(implicit_func, params, num_level, dense=True, vals = vals_np)
+    kd_array = kd_tree_array(implicit_func, params, num_level, prob_threshold=t, dense=False)
+    # only the last level
+    true_kd_array = true_kd_array[-2 ** num_level:]
+    kd_array = kd_array[-2 ** num_level:]
+    tree_iou = (true_kd_array & kd_array).sum() / (true_kd_array | kd_array).sum()
+    print('[Tree IoU]', tree_iou)
+
+    # save the binary files
+    # vals_np = (vals_np * std) + mean
+    # save_vtk(vals_np.shape, bounds / vals_np.shape, vals_np, 'test.vti')

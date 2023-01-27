@@ -5,6 +5,7 @@ from functools import partial
 import math
 
 import numpy as np
+import numba as nb
 
 import utils
 from bucketing import *
@@ -14,6 +15,235 @@ import extract_cell
 import geometry
 
 INVALID_IND = 2**30
+
+@nb.jit(nopython=True)
+def get_real_bounds_helper(values, all_node_lower, all_node_upper, isovalue = 0, coord_bound = 1):
+    node_type = np.zeros((all_node_lower.shape[0],), np.int32)
+    worst_dim = np.argmax(all_node_upper - all_node_lower, axis = -1)
+    # ignore the valid mask for the output
+    
+    for i in range(len(all_node_lower)):
+        # print("%d/%d" % (i,len(all_node_lower)), end='\r')
+        lower = all_node_lower[i]
+        upper = all_node_upper[i]
+
+        max_coord = values.shape[0] + 1
+        lower_coord = ((lower + coord_bound) * max_coord/ 2).astype(np.int32)
+        l1,l2,l3 = lower_coord
+        upper_coord = ((upper + coord_bound) * max_coord/ 2).astype(np.int32)
+        u1,u2,u3 = upper_coord
+        vs = values[l1:u1+1, l2:u2+1, l3:u3+1]
+
+        if vs.max() < isovalue:
+            node_type[i] = SIGN_NEGATIVE
+        elif vs.min() > isovalue:
+            node_type[i] = SIGN_POSITIVE
+        else:
+            node_type[i] = SIGN_UNKNOWN
+        
+    return node_type, worst_dim
+def kd_tree_array_iter_dense(
+        vals, continue_splitting,
+        node_valid, node_lower, node_upper,
+        ib, out_valid, out_lower, out_upper,
+        isovalue=0.,
+        ):
+
+    N_in = node_lower.shape[0]
+    d = node_lower.shape[-1]
+        
+    # evaluate the function inside nodes
+    node_types, node_split_dim = get_real_bounds_helper(vals, np.asarray(node_lower), np.asarray(node_upper), isovalue)
+    
+
+    # split the unknown nodes to children
+    # (if split_children is False this will just not create any children at all)
+    split_mask = utils.logical_and_all([node_valid, node_types == SIGN_UNKNOWN])
+
+    ## now actually build the child nodes
+    if continue_splitting:
+
+        # extents of the new child nodes along each split dimension
+        new_lower = node_lower
+        new_upper = node_upper
+        new_mid = 0.5 * (new_lower + new_upper)
+        new_coord_mask = jnp.arange(3)[None,:] == node_split_dim[:,None]
+        newA_lower = new_lower
+        newA_upper = jnp.where(new_coord_mask, new_mid, new_upper)
+        newB_lower = jnp.where(new_coord_mask, new_mid, new_lower)
+        newB_upper = new_upper
+
+        # concatenate the new children to form output arrays
+        node_valid = jnp.concatenate((split_mask, split_mask))
+        node_lower = jnp.concatenate((newA_lower, newB_lower))
+        node_upper = jnp.concatenate((newA_upper, newB_upper))
+        outL = out_valid.shape[1]
+
+    else:
+        node_valid = jnp.logical_and(node_valid, node_types == SIGN_UNKNOWN)
+        outL = node_valid.shape[0]
+
+    # write the result in to arrays
+    # utils.printarr(out_valid, node_valid, out_lower, node_lower, out_upper, node_upper)
+    out_valid = out_valid.at[ib,:outL].set(node_valid)
+    out_lower = out_lower.at[ib,:outL,:].set(node_lower)
+    out_upper = out_upper.at[ib,:outL,:].set(node_upper)
+
+    return out_valid, out_lower, out_upper
+
+@partial(jax.jit, static_argnames=("func","continue_splitting"), donate_argnums=(7,8,9))
+def kd_tree_array_iter(
+        func, params, continue_splitting,
+        node_valid, node_lower, node_upper,
+        ib, out_valid, out_lower, out_upper,
+        isovalue=0.,offset=0.,prob_threshold=0.95,num_grid=1, 
+        ):
+
+    N_in = node_lower.shape[0]
+    d = node_lower.shape[-1]
+
+    def eval_one_node(lower, upper):
+
+        # perform an affine evaluation
+        node_type = func.classify_box(params, lower, upper, isovalue=isovalue, offset=offset, prob_threshold=prob_threshold, num_grid=num_grid)
+
+        # use the largest length along any dimension as the split policy
+        worst_dim = jnp.argmax(upper-lower, axis=-1)
+
+        return node_type, worst_dim
+        
+    # evaluate the function inside nodes
+    node_types, node_split_dim = jax.vmap(eval_one_node)(node_lower, node_upper)
+    
+
+    # split the unknown nodes to children
+    # (if split_children is False this will just not create any children at all)
+    split_mask = utils.logical_and_all([node_valid, node_types == SIGN_UNKNOWN])
+
+    ## now actually build the child nodes
+    if continue_splitting:
+
+        # extents of the new child nodes along each split dimension
+        new_lower = node_lower
+        new_upper = node_upper
+        new_mid = 0.5 * (new_lower + new_upper)
+        new_coord_mask = jnp.arange(3)[None,:] == node_split_dim[:,None]
+        newA_lower = new_lower
+        newA_upper = jnp.where(new_coord_mask, new_mid, new_upper)
+        newB_lower = jnp.where(new_coord_mask, new_mid, new_lower)
+        newB_upper = new_upper
+
+        # concatenate the new children to form output arrays
+        node_valid = jnp.concatenate((split_mask, split_mask))
+        node_lower = jnp.concatenate((newA_lower, newB_lower))
+        node_upper = jnp.concatenate((newA_upper, newB_upper))
+        outL = out_valid.shape[1]
+
+    else:
+        node_valid = jnp.logical_and(node_valid, node_types == SIGN_UNKNOWN)
+        outL = node_valid.shape[0]
+
+    # write the result in to arrays
+    # utils.printarr(out_valid, node_valid, out_lower, node_lower, out_upper, node_upper)
+    out_valid = out_valid.at[ib,:outL].set(node_valid)
+    out_lower = out_lower.at[ib,:outL,:].set(node_lower)
+    out_upper = out_upper.at[ib,:outL,:].set(node_upper)
+
+    return out_valid, out_lower, out_upper
+
+
+def kd_tree_array(func, params, split_depth=None, isovalue=0., offset=0., batch_process_size=4096, prob_threshold = 1., dense = False, vals = None):
+       
+    # Validate input
+    # ASSUMPTION: all of our bucket sizes larger than batch_process_size must be divisible by batch_process_size
+    for b in bucket_sizes:
+        if b > batch_process_size and (b//batch_process_size)*batch_process_size != b:
+            raise ValueError(f"batch_process_size must be a factor of our bucket sizes, is not a factor of {b} (try a power of 2)")
+    if split_depth is None:
+        raise ValueError("must specify split_depth as a terminating condition")
+
+    d = 3
+    B = batch_process_size
+    split_order = (0,1,2)
+    kd_array = jnp.zeros((2 ** (split_depth+1) - 1,), dtype = bool)
+    if dense and vals is None:
+        raise ValueError("must specify values in the dense mode")
+
+
+    ## Recursively build the tree
+    i_split = 0
+    start_index = 0
+    node_valid = jnp.ones((1,), bool)
+    node_lower = jnp.asarray([-1,-1,-1])[None,:]
+    node_upper = jnp.asarray([1,1,1])[None,:]
+    n_splits = split_depth+1 # 1 extra because last round doesn't split
+    for i_split in range(n_splits):
+
+        # Reshape in to batches of size <= B
+        level_size = 2 ** i_split
+        # input_array = kd_array[start_index: start_index + level_size]
+        end_index = start_index + level_size
+
+
+        # utils.printarr(node_valid, node_lower, node_upper)
+        N_curr_nodes = node_valid.shape[0]
+        this_b = min(B, level_size)
+        node_valid = jnp.reshape(node_valid, (-1, this_b))
+        node_lower = jnp.reshape(node_lower, (-1, this_b, d))
+        node_upper = jnp.reshape(node_upper, (-1, this_b, d))
+        nb = node_lower.shape[0]
+        n_occ = int(math.ceil(N_curr_nodes / this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
+
+        # Detect when to quit. On the last iteration we need to not do any more splitting, but still process existing nodes one last time
+        quit_next = i_split+1 == n_splits
+        do_continue_splitting = not quit_next
+
+        # print(f"Kd-tree. iter: {i_split}  N_curr_nodes: {N_curr_nodes}  bucket size: {level_size}  batch size: {this_b}  number of batches: {nb}  quit next: {quit_next}  do_continue_splitting: {do_continue_splitting}")
+
+        # map over the batches
+        out_valid = jnp.zeros((nb, 2*this_b), dtype=bool)
+        out_lower = jnp.zeros((nb, 2*this_b, 3))
+        out_upper = jnp.zeros((nb, 2*this_b, 3))
+
+        # our prob estimation
+        num_grid = 8 ** 3 * 2 ** (n_splits - i_split)
+
+        num_grid = min(2 ** 31 - 1, num_grid)
+
+        for ib in range(n_occ): 
+            if dense:
+                out_valid, out_lower, out_upper, \
+                = \
+                kd_tree_array_iter_dense(vals, do_continue_splitting, \
+                        node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], \
+                        ib, out_valid, out_lower, out_upper, \
+                        isovalue=isovalue)
+            else:
+                out_valid, out_lower, out_upper, \
+                = \
+                kd_tree_array_iter(func, params, do_continue_splitting, \
+                        node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], \
+                        ib, out_valid, out_lower, out_upper, \
+                        isovalue=isovalue, offset=offset, num_grid = num_grid, prob_threshold=prob_threshold)
+
+        node_valid = out_valid
+        node_lower = out_lower
+        node_upper = out_upper
+
+        # flatten back out
+        split_mask = jnp.reshape(node_valid[:, :this_b], (-1,))
+        kd_array = kd_array.at[start_index:end_index].set(split_mask)
+        start_index = end_index
+        node_valid = jnp.reshape(node_valid, (-1,))
+        node_lower = jnp.reshape(node_lower, (-1, d))
+        node_upper = jnp.reshape(node_upper, (-1, d))
+
+
+        if quit_next:
+            break
+
+
+    return kd_array
 
 
 @partial(jax.jit, static_argnames=("func","continue_splitting"), donate_argnums=(7,8,9,10))
@@ -115,7 +345,7 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
     d = lower.shape[-1]
     B = batch_process_size
 
-    print(f"\n == CONSTRUCTING LEVELSET TREE")
+    # print(f"\n == CONSTRUCTING LEVELSET TREE")
     # print(f"  node thresh: {n_node_thresh}")n_node_thresh
 
     # Initialize data

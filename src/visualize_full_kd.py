@@ -1,3 +1,5 @@
+import igl # work around some env/packaging problems by loading this first
+
 import jax
 import jax.numpy as jnp
 
@@ -5,15 +7,12 @@ from functools import partial
 import math
 
 import numpy as np
+import numba as nb
 
 import utils
 from bucketing import *
-import implicit_function
-from implicit_function import SIGN_UNKNOWN, SIGN_POSITIVE, SIGN_NEGATIVE
-import extract_cell
-import geometry
 import implicit_mlp_utils
-from matplotlib import pyplot as plt
+import kd_tree
 
 @partial(jax.jit, static_argnames=("func","continue_splitting"), donate_argnums=(7,8,9,10,11,12,13,14))
 def construct_full_kd_tree_iter(
@@ -91,6 +90,9 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
     node_terminate_thresh = 999999999
 
     d = lower.shape[-1]
+    #calculate the bounds once to get the aff length
+    _, _, _, aff, _ = func.estimate_box_bounds(params, lower, upper)
+    aff_d = aff.shape[0]
     B = batch_process_size
 
     print(f"\n == CONSTRUCTING LEVELSET TREE")
@@ -109,7 +111,7 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
     all_lb = jnp.zeros((0,))
     all_ub = jnp.zeros((0,))
     all_base = jnp.zeros((0,))
-    all_aff = jnp.zeros((0,259))
+    all_aff = jnp.zeros((0,aff_d))
 
     ## Recursively build the tree
     i_split = 0
@@ -137,7 +139,7 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
         out_valid = jnp.zeros((nb, 2*this_b), dtype=bool)
         out_lower = jnp.zeros((nb, 2*this_b, 3))
         out_upper = jnp.zeros((nb, 2*this_b, 3))
-        out_aff = jnp.zeros((nb, this_b, 259))
+        out_aff = jnp.zeros((nb, this_b, aff_d))
         out_base = jnp.zeros((nb, this_b))
         out_lb = jnp.zeros((nb, this_b))
         out_ub = jnp.zeros((nb, this_b))
@@ -161,7 +163,7 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
         out_lb = jnp.reshape(out_lb, (-1,))
         out_ub = jnp.reshape(out_ub, (-1,)) 
         out_base = jnp.reshape(out_base, (-1,))
-        out_aff = jnp.reshape(out_aff, (-1, 259)) 
+        out_aff = jnp.reshape(out_aff, (-1, aff_d)) 
 
         out_ub = out_ub[:N_curr_nodes] # Number of nodes in the last ite
         out_lb = out_lb[:N_curr_nodes]
@@ -205,24 +207,30 @@ def construct_full_kd_tree(func, params, lower, upper, split_depth=12, batch_pro
 
     return out_dict
 
-def get_real_bounds_helper(values, lower, upper, coord_bound = 1):
-    max_coord = values.shape[0] + 1
-    lower_coord = ((lower + coord_bound) * max_coord/ 2).astype(int)
-    l1,l2,l3 = lower_coord
-    upper_coord = ((upper + coord_bound) * max_coord/ 2).astype(int)
-    u1,u2,u3 = upper_coord
-    vs = values[l1:u1+1, l2:u2+1, l3:u3+1]
-    # minimum = 1e8 
-    # maximum = -1e8
-    # for i in range(l1, u1+1):
-    #     for j in range(l2, u2+1):
-    #         for k in range(l3, u3+1):
-    #             minimum = min(minimum, values[i,j,k])
-    #             maximum = max(maximum, values[i,j,k])
-    return vs.min(), vs.max()
+@nb.jit(nopython=True)
+def get_real_bounds_helper(values, all_node_lower, all_node_upper, coord_bound = 1):
+    real_ub = []
+    real_lb = []
+    # ignore the valid mask for the output
+    
+    for i in range(len(all_node_lower)):
+        # print("%d/%d" % (i,len(all_node_lower)), end='\r')
+        lower = all_node_lower[i]
+        upper = all_node_upper[i]
 
+        max_coord = values.shape[0] + 1
+        lower_coord = ((lower + coord_bound) * max_coord/ 2).astype(np.int32)
+        l1,l2,l3 = lower_coord
+        upper_coord = ((upper + coord_bound) * max_coord/ 2).astype(np.int32)
+        u1,u2,u3 = upper_coord
+        vs = values[l1:u1+1, l2:u2+1, l3:u3+1]
 
-def get_real_bounds(func, params, output, split_depth=12, subcell_depth=3, batch_process_size=2048):
+        real_ub.append(vs.max())
+        real_lb.append(vs.min())
+        
+    return real_ub, real_lb
+
+def get_real_bounds(func, params, output, split_depth=12, subcell_depth=3, batch_process_size=4096):
     d = output['all_node_lower'].shape[-1]
     kd_depth = split_depth // d
     total_depth = kd_depth + subcell_depth
@@ -233,21 +241,17 @@ def get_real_bounds(func, params, output, split_depth=12, subcell_depth=3, batch
     grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
     sdf_vals = utils.evaluate_implicit_fun(func, params, grid, batch_process_size)
     sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
-    output['real_ub'] = []
-    output['real_lb'] = []
+    sdf_vals = np.asarray(sdf_vals)
+    all_node_lower = np.asarray(output['all_node_lower'])
+    all_node_upper = np.asarray(output['all_node_upper'])
 
-    # ignore the valid mask for the output
-    for i in range(len(output['all_node_valid'])):
-        print("%d/%d" % (i,len(output['all_node_valid'])), end='\r')
-        lower = output['all_node_lower'][i]
-        upper = output['all_node_upper'][i]
-        minimum, maximum = get_real_bounds_helper(sdf_vals, lower, upper)
-        output['real_ub'].append(maximum)
-        output['real_lb'].append(minimum)
-    output['real_ub'] = jnp.asarray(output['real_ub'], dtype=jnp.float32)
-    output['real_lb'] = jnp.asarray(output['real_lb'], dtype=jnp.float32)
+    real_ub, real_lb = get_real_bounds_helper(sdf_vals, all_node_lower, all_node_upper)
+        
+    output['real_ub'] = jnp.asarray(real_ub, dtype=jnp.float32)
+    output['real_lb'] = jnp.asarray(real_lb, dtype=jnp.float32)
     return output
 
+@nb.jit(nopython=True)
 def generate_diff_tree(lower:jnp.ndarray, upper:jnp.ndarray, real_lb, real_ub, lb, ub, split_depth=12, data_bound = 1):
     d = lower.shape[-1]
     kd_depth = split_depth // d
@@ -256,7 +260,7 @@ def generate_diff_tree(lower:jnp.ndarray, upper:jnp.ndarray, real_lb, real_ub, l
 
 
     for i in range(len(lower)):
-        print("%d/%d" % (i,len(lower)), end='\r')
+        # print("%d/%d" % (i,len(lower)), end='\r')
         coord_diff = upper[i] - lower[i]
         if coord_diff[0] == coord_diff[1] and coord_diff[1] == coord_diff[2]:
             size = coord_diff[0]
@@ -272,19 +276,68 @@ def generate_diff_tree(lower:jnp.ndarray, upper:jnp.ndarray, real_lb, real_ub, l
 
 
 if __name__ == "__main__":
-
-    data_bound = float(1)
+    data_bound = 1
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound,   data_bound,  data_bound))
 
-    implicit_func, params = implicit_mlp_utils.generate_implicit_from_file('sample_inputs/vorts.npz', mode='affine_all')
-    output = construct_full_kd_tree(implicit_func, params, lower, upper, split_depth=15)
-    left, right = utils.get_ci_mc(output['aff'][-10:], prob=0.95, mc_number=1000000)
-    print(left)
-    print(right)
-    sigma = jnp.sqrt(((output['aff'][-10:] ** 2).sum(-1) / 3))
-    print(sigma * 2)
-    print(jnp.abs(output['aff'][-10:]).sum(-1))
+    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
+    data_type = data_opts[0]
+    isovalue = 0
+    t = 0.95
+    if data_type == 'combustion':
+        test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
+        input_file = '../data/jet_chi_0054.dat'
+        bounds = np.array([479, 339, 119])
+        isovalue = 1
+    elif data_type == 'vorts':
+        test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+        input_file = '../data/vorts01.data'
+        bounds = np.array([127, 127, 127])
+    elif data_type == 'asteroid':
+        test_model = 'sample_inputs/v02_z_elu_5_256.npz'
+        input_file = '../data/99_500_v02.bin'
+        bounds = np.array([499, 499, 499])
+    elif data_type == 'ethanediol':
+        test_model = 'sample_inputs/eth_elu_5_128.npz'
+        input_file = '../data/ethanediol.bin'
+        bounds = np.array([115, 116, 134])
+
+    mode = 'affine_all'
+    # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
+    affine_opts = {}
+    affine_opts['affine_n_truncate'] = 512
+    affine_opts['affine_n_append'] = 4
+    affine_opts['sdf_lipschitz'] = 1.
+    truncate_policies = ['absolute', 'relative']
+    affine_opts['affine_truncate_policy'] = 'absolute'
+
+    implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
+
+
+    # with utils.Timer("Full kd-tree"):
+    #     output = construct_full_kd_tree(implicit_func, params, lower, upper, split_depth=15)
+
+
+    # with utils.Timer("Real bounds"):
+    #     output = get_real_bounds(implicit_func, params, output, subcell_depth= 3)
+    # jnp.save('output', output, allow_pickle=True)
+    # output = jnp.load('output.npy', allow_pickle = True).item()
+    # out = generate_diff_tree(output['all_node_lower'], output['all_node_upper'], output['real_lb'], output['real_ub'], output['lb'], output['ub'])
+
+    # print(plt.hist(out[4].flatten()))
+    # plt.savefig('hist.png')
+    # print(out)
+    # for i, o in enumerate(out):
+    #     if o.shape[0] > 1: 
+    #         utils.save_vtk(o.shape[0], 128, o, "%d.vti" % i)
+
+    ##### code for analysis the aff and bounds
+    # left, right = utils.get_ci_mc(output['aff'][-10:], prob=0.95, mc_number=1000000)
+    # print(left)
+    # print(right)
+    # sigma = jnp.sqrt(((output['aff'][-10:] ** 2).sum(-1) / 3))
+    # print(sigma * 2)
+    # print(jnp.abs(output['aff'][-10:]).sum(-1))
 
     # output['ub'] = right
     # output['lb'] = left
@@ -302,15 +355,3 @@ if __name__ == "__main__":
         # plt.cla()
         # break
 
-    # output = get_real_bounds(implicit_func, params, output, subcell_depth= 4)
-    # jnp.save('output', output, allow_pickle=True)
-
-    # output = jnp.load('output.npy', allow_pickle = True).item()
-    # out = generate_diff_tree(output['all_node_lower'], output['all_node_upper'], output['real_lb'], output['real_ub'], output['lb'], output['ub'])
-
-    # print(plt.hist(out[4].flatten()))
-    # plt.savefig('hist.png')
-    # print(out)
-    # for i, o in enumerate(out):
-    #     if o.shape[0] > 1: 
-    #         utils.save_vtk(o.shape[0], 128, o, "%d.vti" % i)

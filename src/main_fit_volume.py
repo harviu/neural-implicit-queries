@@ -77,14 +77,7 @@ def main():
    
     # load the input
     print(f"Loading data {args.input_file}")
-    if args.data_type == 'vorts':
-        data = load_vorts_data(128, args.input_file)
-    elif args.data_type == 'asteroid':
-        data = load_asteroid_data(500, args.input_file)
-    elif args.data_type == 'combustion':
-        data = load_combustion_data(args.input_file)
-    elif args.data_type == 'ethanediol':
-        data = load_ethanediol_data(args.input_file)
+    data = load_data(args.data_type, args.input_file)
 
     # preprocess (normalized to -1,1)
     # data = jnp.log2(data+1)
