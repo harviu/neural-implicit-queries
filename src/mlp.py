@@ -212,7 +212,8 @@ opt_params = {}
 apply_func = {
         'default' : {},
         'affine' : {},
-        'slope_interval' : {}
+        'slope_interval' : {},
+        'uncertainty': {},
     }
 
 # == Dense linear layer
@@ -353,4 +354,5 @@ apply_func['default']['spatial_transformation'] = default_spatial_transformation
 
 # TODO bad software design, see note above
 import affine_layers
+import uncertainty_layers
 import slope_interval_layers

@@ -24,6 +24,7 @@ import kd_tree
 from implicit_function import SIGN_UNKNOWN, SIGN_POSITIVE, SIGN_NEGATIVE
 
 import affine_layers
+import uncertainty_layers
 import slope_interval_layers
 import implicit_mlp_utils
 
