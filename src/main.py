@@ -51,6 +51,9 @@ def hierarchical(t):
     return np.array(indices)
 
 if __name__ == "__main__":
+    # jax.config.update('jax_disable_jit', True)
+    # jax.config.update("jax_debug_nans", True)
+
     data_bound = 1
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
     data_type = data_opts[0]
@@ -61,7 +64,8 @@ if __name__ == "__main__":
         bounds = np.array([479, 339, 119])
         isovalue = 1
     elif data_type == 'vorts':
-        test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+        # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+        test_model = 'sample_inputs/vorts_relu_5_128.npz'
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
     elif data_type == 'asteroid':
@@ -76,18 +80,18 @@ if __name__ == "__main__":
     mean = data.mean()
     std = data.std()
 
-    n_mc_depth = 8
+    n_mc_depth = 7
     t = 0.95
     batch_process_size = 2 ** 12
 
-    mode = 'affine_all'
     # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
+    mode = 'uncertainty_all'
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 512
     affine_opts['affine_n_append'] = 4
     affine_opts['sdf_lipschitz'] = 1.
     truncate_policies = ['absolute', 'relative']
-    affine_opts['affine_truncate_policy'] = 'absolute'
+    affine_opts['affine_truncate_policy'] = truncate_policies[0]
 
     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
     # print(params)
@@ -106,25 +110,25 @@ if __name__ == "__main__":
     vals_np = dense_recon()
 
     # correctness
-    # if t<1:
-    #     with Timer("Calcuate IoU"):
-    #         iso = iso_voxels(np.asarray(vals_np), isovalue)
-    #         true_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
-    #         true_mask[iso] = True
-    #         our_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
-    #         our_mask[indices] = True
-    #         iou = (true_mask & our_mask).sum() / (true_mask | our_mask).sum()
-    #         print('[iou]', iou)
+    if t<1:
+        with Timer("Calcuate IoU"):
+            iso = iso_voxels(np.asarray(vals_np), isovalue)
+            true_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
+            true_mask[iso] = True
+            our_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
+            our_mask[indices] = True
+            iou = (true_mask & our_mask).sum() / (true_mask | our_mask).sum()
+            print('[iou]', iou)
 
     # compare tree
-    num_level = (n_mc_depth - n_mc_subcell) * 3
-    true_kd_array = kd_tree_array(implicit_func, params, num_level, dense=True, vals = vals_np)
-    kd_array = kd_tree_array(implicit_func, params, num_level, prob_threshold=t, dense=False)
-    # only the last level
-    true_kd_array = true_kd_array[-2 ** num_level:]
-    kd_array = kd_array[-2 ** num_level:]
-    tree_iou = (true_kd_array & kd_array).sum() / (true_kd_array | kd_array).sum()
-    print('[Tree IoU]', tree_iou)
+    # num_level = (n_mc_depth - n_mc_subcell) * 3
+    # true_kd_array = kd_tree_array(implicit_func, params, num_level, dense=True, vals = vals_np)
+    # kd_array = kd_tree_array(implicit_func, params, num_level, prob_threshold=t, dense=False)
+    # # only the last level
+    # true_kd_array = true_kd_array[-2 ** num_level:]
+    # kd_array = kd_array[-2 ** num_level:]
+    # tree_iou = (true_kd_array & kd_array).sum() / (true_kd_array | kd_array).sum()
+    # print('[Tree IoU]', tree_iou)
 
     # save the binary files
     # vals_np = (vals_np * std) + mean

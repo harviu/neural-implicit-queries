@@ -13,48 +13,57 @@ def dense(input, A, b, ctx):
         out = jnp.dot(input[0], A)
         if b is not None:
             out += b
-        return  out, None, None
+        return  out, None, None, None
 
-    base, aff, err = input
+    mu, vecs, sigma, err = input
 
     def dot(x, with_abs=False):
         myA = jnp.abs(A) if with_abs else A 
         return jnp.dot(x, myA)
  
-    base = dot(base)
-    aff = jax.vmap(dot)(aff)
+    mu = dot(mu)
+    vecs = jax.vmap(dot)(vecs)
+    sigma = jax.vmap(dot)(sigma)
     err = dot(err, with_abs=True)
 
     if b is not None:
-        base += b
+        mu += b
 
-    return base, aff, err
+    return mu, vecs, sigma, err
 mlp.apply_func['uncertainty']['dense'] = dense
 
 def relu(input, ctx):
     # Chebyshev bound
-    base, aff, err = input
+    mu, vecs, sigma, err = input
 
-    if affine.is_const(input):
-        return jax.nn.relu(base), aff, err
+    if uncertainty.is_const(input):
+        return jax.nn.relu(mu), vecs, sigma, err
 
-    lower, upper = affine.may_contain_bounds(ctx, input)
+    mu, sigma = uncertainty.radius(input)
 
     # Compute the linearized approximation
-    alpha = (jax.nn.relu(upper) - jax.nn.relu(lower)) / (upper - lower)
-    alpha = jnp.where(lower >= 0, 1., alpha)
-    alpha = jnp.where(upper < 0, 0., alpha)
-    # handle numerical badness in the denominator above
-    alpha = jnp.nan_to_num(alpha, nan=0.0, copy=False) # necessary?
-    alpha = jnp.clip(alpha, a_min=0., a_max=1.) 
+    D = jnp.e ** (- mu * mu / 2 / sigma /sigma) / jnp.sqrt(2 * jnp.pi)
+    C = jax.scipy.special.erf(-mu / jnp.sqrt(2) / sigma)
+    beta = D * sigma
+    alpha = (1-C) / 2
 
-    # here, alpha/beta are necessarily positive, which makes this simpler
-    beta = (jax.nn.relu(lower) - alpha * lower) / 2
-    delta = beta
+    A = mu /2 * (1-C) + beta 
+    An = mu /2 * (1+C) - beta #int(-\inf, 0) px*x
 
-    output = affine.apply_linear_approx(ctx, input, alpha, beta, delta)
+    B = (mu * mu + sigma * sigma) /2 * (1-C) + mu * beta #int(0,\inf) px*x
+    Bn = (mu * mu + sigma * sigma) /2 * (1+C) - mu * beta #int(-\inf, 0) px*x^2
+
+    # target function
+    delta = alpha ** 2 * Bn + 2 * alpha * beta * An + \
+        (1-alpha) ** 2 * B - 2* (1-alpha) * beta * A + \
+        beta * beta
+    
+    delta = jnp.abs(delta)
+    delta = jnp.sqrt(delta)
+
+    output = uncertainty.apply_linear_approx(ctx, input, alpha, beta, delta)
     return output
-mlp.apply_func['affine']['relu'] = relu
+mlp.apply_func['uncertainty']['relu'] = relu
 
 def elu(input, ctx):
     # Chebyshev bound
@@ -95,7 +104,7 @@ def elu(input, ctx):
 
     output = affine.apply_linear_approx(ctx, input, alpha, beta, delta)
     return output
-mlp.apply_func['affine']['elu'] = elu
+mlp.apply_func['uncertainty']['elu'] = elu
 
 def sin(input, ctx):
     # not-quite Chebyshev bound
@@ -135,13 +144,13 @@ def sin(input, ctx):
 
     output = affine.apply_linear_approx(ctx, input, alpha, beta, delta)
     return output
-mlp.apply_func['affine']['sin'] = sin
+mlp.apply_func['uncertainty']['sin'] = sin
 
 def pow2_frequency_encode(input, ctx, coefs, shift=None):
-    base, aff, err = input
+    mu, vecs, sigma, err = input
 
     # TODO debug
-    if len(base.shape) > 1:
+    if len(mu.shape) > 1:
         raise ValueError("big base")
 
     # expand the length-d inputs to a lenght-d*c vector
@@ -151,30 +160,32 @@ def pow2_frequency_encode(input, ctx, coefs, shift=None):
             out += shift
         return out.flatten()
 
-    base = s(True, base)
-    if affine.is_const(input):
-        return base, None, None
+    mu = s(True, mu)
+    if uncertainty.is_const(input):
+        return mu, None, None, None
 
-    aff = jax.vmap(partial(s, False))(aff)
+    vecs = jax.vmap(partial(s, False))(vecs)
+    sigma = jax.vmap(partial(s, False))(sigma)
     err = s(False, err)
     
-    return base, aff, err
-mlp.apply_func['affine']['pow2_frequency_encode'] = pow2_frequency_encode
+    return mu, vecs, sigma, err
+mlp.apply_func['uncertainty']['pow2_frequency_encode'] = pow2_frequency_encode
 
 def squeeze_last(input, ctx):
-    base, aff, err = input
+    mu, vecs, sigma, err = input
     s = lambda x : jnp.squeeze(x, axis=0)
-    base = s(base)
-    if affine.is_const(input):
-        return base, None, None
-    aff = jax.vmap(s)(aff)
+    mu = s(mu)
+    if uncertainty.is_const(input):
+        return mu, None, None, None
+    vecs = jax.vmap(s)(vecs)
+    sigma = jax.vmap(s)(sigma)
     err = s(err)
-    return base, aff, err
-mlp.apply_func['affine']['squeeze_last'] = squeeze_last
+    return mu, vecs, sigma, err
+mlp.apply_func['uncertainty']['squeeze_last'] = squeeze_last
 
 def spatial_transformation(input, R, t, ctx):
     # if the shape transforms by R,t, input points need the opposite transform
     R_inv = jnp.linalg.inv(R)
     t_inv = jnp.dot(R_inv, -t)
     return dense(input, A=R_inv, b=t_inv, ctx=ctx)
-mlp.apply_func['affine']['spatial_transformation'] = spatial_transformation
+mlp.apply_func['uncertainty']['spatial_transformation'] = spatial_transformation

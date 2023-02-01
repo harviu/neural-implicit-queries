@@ -15,11 +15,11 @@ from implicit_function import SIGN_UNKNOWN, SIGN_POSITIVE, SIGN_NEGATIVE
 
 # === Function wrappers
 
-class AffineImplicitFunction(implicit_function.ImplicitFunction):
+class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
 
-    def __init__(self, affine_func, ctx):
+    def __init__(self, func, ctx):
         super().__init__("classify-only")
-        self.affine_func = affine_func
+        self.affine_func = func
         self.ctx = ctx
         self.mode_dict = {'ctx' : self.ctx}
 
@@ -46,9 +46,7 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
 
         # compute relevant bounds
         # compute the justified prob_threshold
-        may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=z, box_dim=d)
-        # may_lower, may_upper = may_contain_bounds(keep_ctx, output)
-        # must_lower, must_upper = must_contain_bounds(keep_ctx, output)
+        may_lower, may_upper = may_contain_bounds(keep_ctx, output, z=z)
 
         # determine the type of the region
         output_type = SIGN_UNKNOWN
@@ -57,21 +55,21 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
 
         return output_type
 
-    def estimate_general_box_bounds(self, params, box_center, box_vecs):
-        d = box_center.shape[-1]
-        v = box_vecs.shape[-2]
-        assert box_center.shape == (d,), "bad box_vecs shape"
-        assert box_vecs.shape == (v,d), "bad box_vecs shape"
-        keep_ctx = dataclasses.replace(self.ctx, affine_domain_terms=v)
+    # def estimate_general_box_bounds(self, params, box_center, box_vecs):
+    #     d = box_center.shape[-1]
+    #     v = box_vecs.shape[-2]
+    #     assert box_center.shape == (d,), "bad box_vecs shape"
+    #     assert box_vecs.shape == (v,d), "bad box_vecs shape"
+    #     keep_ctx = dataclasses.replace(self.ctx, affine_domain_terms=v)
 
-        # evaluate the function
-        input = coordinates_in_general_box(keep_ctx, box_center, box_vecs)
-        output = self.affine_func(params, input, {'ctx' : keep_ctx})
-        base, aff, err = output
+    #     # evaluate the function
+    #     input = coordinates_in_general_box(keep_ctx, box_center, box_vecs)
+    #     output = self.affine_func(params, input, {'ctx' : keep_ctx})
+    #     base, aff, err = output
 
-        # compute relevant bounds
-        may_lower, may_upper = may_contain_bounds(keep_ctx, output)
-        return may_lower, may_upper, base, aff, err # return output for debug reason
+    #     # compute relevant bounds
+    #     may_lower, may_upper = may_contain_bounds(keep_ctx, output)
+    #     return may_lower, may_upper, base, aff, err # return output for debug reason
 
 # === Affine utilities
 
@@ -80,42 +78,41 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
 
 @dataclass(frozen=True)
 class AffineContext():
-    mode: str = 'affine_fixed'
+    mode: str = 'uncertainty_all'
     truncate_count: int = -777
     truncate_policy: str = 'absolute'
     affine_domain_terms: int = 0
     n_append: int = 0
 
     def __post_init__(self):
-        if self.mode not in ['interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all']:
+        if self.mode not in ['uncertainty_truncate', 'uncertainty_all']:
             raise ValueError("invalid mode")
 
-        if self.mode == 'affine_truncate':
+        if self.mode == 'uncertainty_truncate':
             if self.truncate_count is None:
                 raise ValueError("must specify truncate count")
 
 def is_const(input):
-    base, aff, err = input
-    if err is not None: return False
-    return aff is None or aff.shape[0] == 0
+    mu, vecs, sigma, err = input
+    if err is not None: 
+        return False
+    if sigma is not None:
+        if sigma.shape[0] > 0: return False
+    if vecs is not None:
+        if vecs.shape[0] > 0: return False
+    return True
 
 
-# Compute the 'radius' (width of the approximation)
+# Compute the 'radius' given a specific z
 def radius(input):
     if is_const(input): return 0.
-    base, aff, err = input
-    rad = jnp.sum(jnp.abs(aff), axis=0)
+    mu, vecs, sigma, err = input
+    vecs_var = ((vecs * vecs) / 3).sum(0)
+    var = (sigma * sigma).sum(0)
+    var_sum = var + vecs_var
     if err is not None:
-        rad += err
-    return rad
-
-# Constuct affine inputs for the coordinates in k-dimensional box
-# lower,upper should be vectors of length-k
-def coordinates_in_box(ctx, lower, upper):
-    center = 0.5 * (lower+upper)
-    vec = upper - center
-    axis_vecs = jnp.diag(vec)
-    return coordinates_in_general_box(ctx, center, axis_vecs)
+        var_sum += err * err
+    return mu, jnp.sqrt(var_sum)
 
 # Constuct affine inputs for the coordinates in k-dimensional box,
 # which is not necessarily axis-aligned
@@ -127,120 +124,83 @@ def coordinates_in_box(ctx, lower, upper):
 #  reason about)
 def coordinates_in_general_box(ctx, center, vecs):
     base = center
-    if ctx.mode == 'interval':
-        aff = jnp.zeros((0,center.shape[-1]))
-        err = jnp.sum(jnp.abs(vecs), axis=0)
-    else:
-        aff = vecs
-        err = jnp.zeros_like(center)
-    return base, aff, err
+    aff = jnp.zeros((0,center.shape[-1]))
+    err = jnp.zeros_like(center)
+    return base, vecs, aff, err
 
-def may_contain_bounds(ctx, input,):
-    '''
-    An interval range of values that `input` _may_ take along the domain
-    '''
-    base, aff, err = input
-    rad = radius(input)
-    return base-rad, base+rad
 
-def may_contain_bounds_mc(ctx, input,):
-    base, aff, err = input
-    left, right = utils.get_ci_mc(aff, 0.99999, 500000)
+# implemented clt in radius function
+def may_contain_bounds(ctx, input, z=2):
+    mu, vecs, sigma, err = input
+    vecs_bound = jnp.sum(jnp.abs(vecs), axis=0) # use exact bounds for the vectors
+    variance = jnp.sum(sigma ** 2, axis=0) # calculat the variance for uncertainty terms
     if err is not None:
-        left -= err
-        right += err
-    return base + left, base + right
-
-def may_contain_bounds_clt(ctx, input, z=2, box_dim = 3):
-    base, aff, err = input
-    box_aff = aff[:box_dim]
-    box_rad = jnp.sum(jnp.abs(box_aff), axis=0)
-    act_aff = aff[box_dim:]
-    rad_act_aff = jnp.sum(act_aff ** 2, axis=0)
-    if err is not None:
-        rad_act_aff += err * err
-    sigma = jnp.sqrt(rad_act_aff / 3)
-    rad_clt = z * sigma + box_rad
-    rad = radius(input)
-    rad = jnp.where(rad_clt < rad, rad_clt, rad)
-    return base - rad, base + rad
+        variance += err * err # add the truncation error
+    sigma = jnp.sqrt(variance)
+    z_bound = z * sigma + vecs_bound
+    return mu - z_bound, mu + z_bound
 
 def truncate_affine(ctx, input):
     # do nothing if the input is a constant or we are not in truncate mode
     if is_const(input): return input
-    if ctx.mode != 'affine_truncate':
+    if ctx.mode != 'uncertainty_truncate':
         return input
 
     # gather values
-    base, aff, err = input
+    # only apply the truncation to sigma
+    mu, vecs, sigma, err = input
     n_keep = ctx.truncate_count
 
     # if the affine list is shorter than the truncation length, nothing to do
-    if aff.shape[0] <= n_keep:
+    if sigma.shape[0] <= n_keep:
         return input
-
-    v = ctx.affine_domain_terms
-    box_aff = aff[:v]
-    act_aff = aff[v:]
 
     # compute the magnitudes of each affine value
     # TODO fanicier policies?
     if ctx.truncate_policy == 'absolute':
-        affine_mags = jnp.sum(jnp.abs(act_aff), axis=-1)
+        affine_mags = jnp.sum(jnp.abs(sigma), axis=-1)
     elif ctx.truncate_policy == 'relative':
-        affine_mags = jnp.sum(jnp.abs(act_aff / base[None,:]), axis=-1)
+        affine_mags = jnp.sum(jnp.abs(sigma / mu[None,:]), axis=-1)
     else:
         raise RuntimeError("bad policy")
 
 
     # sort the affine terms by by magnitude
     sort_inds = jnp.argsort(-affine_mags, axis=-1) # sort to decreasing order
-    act_aff = act_aff[sort_inds,:]
+    sigma = sigma[sort_inds,:]
 
     # keep the n_keep highest-magnitude entries
-    aff_keep = act_aff[:n_keep,:]
-    aff_out = jnp.concatenate((box_aff, aff_keep), axis=0)
+    aff_keep = sigma[:n_keep,:]
 
     # for all the entries we aren't keeping, add their contribution to the interval error
-    aff_drop = act_aff[n_keep:,:]
-    err = err + jnp.sum(jnp.abs(aff_drop), axis=0)
+    aff_drop = sigma[n_keep:,:]
+    err = err * err + jnp.sum((aff_drop * aff_drop), axis=0)
+    err = jnp.sqrt(err)
 
-    return base, aff_out, err
+    return mu, vecs, aff_keep, err
 
 def apply_linear_approx(ctx, input, alpha, beta, delta):
-    base, aff, err = input
-    base = alpha * base + beta
-    if aff is not None:
-        aff = alpha * aff
+    mu, vecs, sigma, err = input
+    mu = alpha * mu + beta
+    if sigma is not None:
+        sigma = alpha * sigma
+    if vecs is not None:
+        vecs = alpha * vecs
+    if err is not None:
+        err = alpha * err
 
     # This _should_ always be positive by definition. Always be sure your 
     # approximation routines are generating positive delta.
     # At most, we defending against floating point error here.
     delta = jnp.abs(delta)
 
-    if ctx.mode in ['interval', 'affine_fixed']:
-        err = alpha * err + delta
-    elif ctx.mode in ['affine_truncate', 'affine_all']:
-        err = alpha * err
-        new_aff = jnp.diag(delta)
-        aff = jnp.concatenate((aff, new_aff), axis=0)
-        base, aff, err = truncate_affine(ctx, (base, aff, err))
-
-    elif ctx.mode in ['affine_append']:
-        err = alpha * err
-        
-        keep_vals, keep_inds = jax.lax.top_k(delta, ctx.n_append)
-        row_inds = jnp.arange(ctx.n_append)
-        new_aff = jnp.zeros((ctx.n_append, aff.shape[-1]))
-        new_aff = new_aff.at[row_inds, keep_inds].set(keep_vals)
-        aff = jnp.concatenate((aff, new_aff), axis=0)
-        err = err + (jnp.sum(delta) - jnp.sum(keep_vals)) # add in the error for the affs we didn't keep
-
-    return base, aff, err
+    new_sigma = jnp.diag(delta)
+    sigma = jnp.concatenate((sigma, new_sigma), axis=0)
+    return truncate_affine(ctx, (mu, vecs, sigma, err))
 
 # Convert to/from the affine representation from an ordinary value representing a scalar
 def from_scalar(x):
-    return x, None, None
+    return x, None, None, None
 def to_scalar(input):
     if not is_const(input):
         raise ValueError("non const input")
