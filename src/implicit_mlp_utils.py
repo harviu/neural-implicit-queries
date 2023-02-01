@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 
 import utils
-import mlp, sdf, affine, slope_interval
+import mlp, sdf, affine, slope_interval, uncertainty
 
 
 def generate_implicit_from_file(input_path, mode, **kwargs):
@@ -55,6 +55,17 @@ def generate_implicit_from_file(input_path, mode, **kwargs):
         implicit_func = mlp.func_from_spec(mode='affine')
         affine_ctx = affine.AffineContext('affine_all')
         return affine.AffineImplicitFunction(implicit_func, affine_ctx), params
+    
+    elif mode == 'uncertainty_all':
+        implicit_func = mlp.func_from_spec(mode='uncertainty')
+        affine_ctx = uncertainty.AffineContext('uncertainty_all')
+        return uncertainty.UncertaintyImplicitFunction(implicit_func, affine_ctx), params
+    
+    elif mode == 'uncertainty_truncate':
+        implicit_func = mlp.func_from_spec(mode='uncertainty')
+        affine_ctx = uncertainty.AffineContext('uncertainty_truncate', 
+                truncate_count=kwargs['affine_n_truncate'], truncate_policy=kwargs['affine_truncate_policy'])
+        return uncertainty.UncertaintyImplicitFunction(implicit_func, affine_ctx), params
 
     elif mode == 'slope_interval':
         implicit_func = mlp.func_from_spec(mode='slope_interval')
