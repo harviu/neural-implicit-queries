@@ -42,23 +42,24 @@ def relu(input, ctx):
     mu, sigma = uncertainty.radius(input)
 
     # Compute the linearized approximation
-    D = jnp.e ** (- mu * mu / 2 / sigma /sigma) / jnp.sqrt(2 * jnp.pi)
+    E = jnp.e ** (- mu * mu / 2 / sigma /sigma) / jnp.sqrt(2 * jnp.pi)
     C = jax.scipy.special.erf(-mu / jnp.sqrt(2) / sigma)
-    beta = D * sigma
+    beta = E * sigma
     alpha = (1-C) / 2
 
-    A = mu /2 * (1-C) + beta 
-    An = mu /2 * (1+C) - beta #int(-\inf, 0) px*x
+    # A = mu /2 * (1-C) + beta 
+    # An = mu /2 * (1+C) - beta #int(-\inf, 0) px*x
 
-    B = (mu * mu + sigma * sigma) /2 * (1-C) + mu * beta #int(0,\inf) px*x
-    Bn = (mu * mu + sigma * sigma) /2 * (1+C) - mu * beta #int(-\inf, 0) px*x^2
+    # B = (mu * mu + sigma * sigma) /2 * (1-C) + mu * beta #int(0,\inf) px*x
+    # Bn = (mu * mu + sigma * sigma) /2 * (1+C) - mu * beta #int(-\inf, 0) px*x^2
 
     # target function
-    delta = alpha ** 2 * Bn + 2 * alpha * beta * An + \
-        (1-alpha) ** 2 * B - 2* (1-alpha) * beta * A + \
-        beta * beta
+    # delta = alpha ** 2 * Bn + 2 * alpha * beta * An + \
+    #     (1-alpha) ** 2 * B - 2* (1-alpha) * beta * A + \
+    #     beta * beta
+    delta = (1-C*C) * (mu * mu + sigma * sigma) / 4 + C*mu*beta - beta * beta # simplify delta
     
-    delta = jnp.abs(delta)
+    delta = jnp.where(delta<0, 0, delta)
     delta = jnp.sqrt(delta)
 
     output = uncertainty.apply_linear_approx(ctx, input, alpha, beta, delta)
@@ -68,81 +69,84 @@ mlp.apply_func['uncertainty']['relu'] = relu
 def elu(input, ctx):
     # Chebyshev bound
     # Confusingly, elu has a parameter typically called 'alpha', and we also use 'alpha' for our linearizaiton notation. Here we simply ignore and do not support elu's alpha.
-    base, aff, err = input
+    mu, vecs, sigma, err = input
 
-    if affine.is_const(input):
-        return jax.nn.elu(base), aff, err
+    if uncertainty.is_const(input):
+        return jax.nn.elu(mu), vecs, sigma, err
 
-    lower, upper = affine.may_contain_bounds(ctx, input)
+    mu, sigma = uncertainty.radius(input)
+    e = jnp.e
+
+    # test for values
+    # mu = jnp.full_like(mu, -1)
+    # sigma = jnp.full_like(mu, 7)
 
     # Compute the linearized approximation
-    lowerF = jax.nn.elu(lower)
-    upperF = jax.nn.elu(upper)
-    # lowerS = jnp.where(lower < 0, lowerF + 1., 1.)
-    # upperS = jnp.where(upper < 0, upperF + 1., 1.)
-    lowerS = jnp.minimum(jnp.exp(lower), 1.) # more numerically stable than ^^^, but costs exp()
-    upperS = jnp.minimum(jnp.exp(upper), 1.)
+    C = jax.scipy.special.erf(-mu / jnp.sqrt(2) / sigma)
+    E = e ** (- mu * mu / 2 / sigma /sigma) / jnp.sqrt(2 * jnp.pi)
 
-    alpha = (upperF - lowerF) / (upper - lower)
-    alpha = jnp.where(lower >= 0, 1., alpha)
-    # handle numerical badness in the denominator above
-    alpha = jnp.nan_to_num(alpha, nan=0.0, copy=False) # necessary?
-    alpha = jnp.clip(alpha, a_min=lowerS, a_max=upperS) 
+    G = jax.scipy.special.erf((-2*sigma * sigma - mu)/ jnp.sqrt(2)/sigma)
+    H = e ** (2 * mu + 2 * sigma * sigma)
+    J = H * (G+1)
+    J = jnp.where(jnp.isnan(J),0,J) # J should be 0 when H is too large, (L'Hôpital's rule)
 
-    # the alpha tangent point necessarily occurs in the <= 0. part of the function
-    r_upper = (lowerF - alpha * lower)
-    x_lower = jnp.clip(jnp.log(alpha), a_min=lower, a_max=upper)
-    r_lower = (alpha-1.) - alpha * x_lower
-    beta = 0.5 * (r_upper + r_lower)
-    # delta = r_upper - beta
-    delta = 0.5 * jnp.abs(r_upper - r_lower) # this is very defensive, to ensure delta>=0
+    F = e ** (mu + sigma * sigma / 2)
+    D = jax.scipy.special.erf((-sigma * sigma - mu)/ jnp.sqrt(2)/sigma)
+    I = (1+D) * F
+    I = jnp.where(jnp.isnan(I),0,I) # J should be 0 when F is too large, (L'Hôpital's rule)
 
-    # in strictly > 0 case, just directly set the result
-    alpha = jnp.where(lower >= 0, 1., alpha)
-    beta = jnp.where(lower >= 0, 0., beta)
-    delta = jnp.where(lower >= 0, 0., delta)
+    # A = I / 2 + (1-C) * mu / 2 + sigma * E - (C + 1) / 2
+    # B = I * (mu + sigma * sigma) / 2 + (mu * mu + sigma * sigma) * (1-C) / 2 + mu * sigma * E - mu /2 * (1+C)
+    # alpha = (B- mu * A ) / sigma / sigma
+    # beta = ((mu * mu + sigma * sigma) * A - mu * B) / sigma /sigma
 
-    output = affine.apply_linear_approx(ctx, input, alpha, beta, delta)
+    alpha = I / 2 + (1-C)/2
+    beta = (1-mu)*I/2 -(1+C) / 2 + sigma * E
+    # delta1 =  I * (-1-beta-alpha*(mu + sigma*sigma)) \
+    #     + J/2 \
+    #     + (alpha * alpha *sigma * sigma+(mu*alpha+1+beta)*(mu*alpha+1+beta)) * (C+1) /2 \
+    #     - (alpha * mu + 2 * beta)* E * sigma * alpha
+    # delta2 = ((alpha-1)**2*sigma**2+((alpha-1)*mu+beta)**2)/2 * (1-C) \
+    #     + (alpha-1)*sigma*((alpha-1)*mu+2*beta) * E
+
+    # delta1 = (-1/2 - (1+sigma ** 2 ) * I / 2 -sigma * E + C*(sigma * sigma + mu + 1) / 2-(mu + sigma * sigma)/2) * I \
+    #     + J/2 \
+    #     + ((I/2+(1-C)/2)**2*sigma**2 + (I/2 + (mu + 1)*(1-C)/2+sigma*E)**2) * (C+1) /2\
+    #     - (mu*(1-C)/2+(1-mu/2)*I-1-C+2*sigma*E)*(I/2+1/2-C/2)*E*sigma
+
+    # delta = delta1 + delta2
+    # expended using alpha an beta
+    # delta = alpha**2*mu**2 + alpha**2*sigma**2 + alpha*C*mu**2 + alpha*C*sigma**2 - 2*alpha*E*mu*sigma - alpha*I*sigma**2 + \
+    #     2*alpha*beta*mu + alpha*C*mu - alpha*I*mu - alpha*mu**2 - alpha*sigma**2 + beta*C*mu - 2*beta*E*sigma - C*mu**2/2 - \
+    #     C*sigma**2/2 + E*mu*sigma + alpha*mu + beta**2 + beta*C - beta*I - beta*mu + G*H/2 + mu**2/2 + sigma**2/2 + beta + C/2 + H/2 - I + 1/2
+
+    # expended to mu and sigma
+    delta = -C*C*mu*mu/4 - C*C*sigma*sigma/4 + C*E*mu*sigma +C*I*sigma*sigma/2 - E*E*sigma*sigma - I*I*sigma*sigma/4 - C*C*mu/2 + \
+        C*E*sigma + C*I*mu/2 - E*I*sigma - I*sigma*sigma/2 - C*C/4 + C*I/2 + \
+        E*sigma + J/2 - I*I/4 - I*mu/2 + mu*mu/4 + sigma*sigma/4 - I/2 + mu/2 + 1/4
+    # print(C[0], D[0], E[0], I[0], J[0])
+    # print(alpha[0], beta[0])
+    # print(delta[0])
+    # exit()
+
+    delta = jnp.where(delta<0, 0, delta)
+    delta = jnp.sqrt(delta)
+    output = uncertainty.apply_linear_approx(ctx, input, alpha, beta, delta)
     return output
 mlp.apply_func['uncertainty']['elu'] = elu
 
 def sin(input, ctx):
     # not-quite Chebyshev bound
-    base, aff, err = input
-    pi = jnp.pi
+    mu, vecs, sigma, err = input
 
-    if affine.is_const(input):
-        return jnp.sin(base), aff, err
+    if uncertainty.is_const(input):
+        return jax.nn.elu(mu), vecs, sigma, err
 
-    lower, upper = affine.may_contain_bounds(ctx, input)
+    mu, sigma = uncertainty.radius(input)
 
-    slope_lower, slope_upper = utils.cos_bound(lower, upper)
-    alpha = 0.5 * (slope_lower + slope_upper) # this is NOT the Chebyshev value, but seems reasonable
-    alpha = jnp.clip(alpha, a_min=-1., a_max=1.) # (should already be there, this is for numerics only)
+    # Compute the linearized approximation
 
-    # We want to find the minima/maxima of (sin(x) - alpha*x) on [lower, upper] to compute our 
-    # beta and delta. In addition to the endpoints, some calc show there can be interior 
-    # extrema at +-arccos(alpha) + 2kpi for some integer k.
-    # The extrema will 
-    intA = jnp.arccos(alpha)
-    intB = -intA
-
-    # The the first and last occurence of a value which repeats mod 2pi on the domain [lower, upper]
-    # (these give the only possible locations for our extrema)
-    def first(x): return 2.*pi*jnp.ceil((lower + x) / (2.*pi)) - x
-    def last(x): return 2.*pi*jnp.floor((upper - x) / (2.*pi)) + x
-
-    extrema_locs = [lower, upper, first(intA), last(intA), first(intB), last(intB)]
-    extrema_locs = [jnp.clip(x, a_min=lower, a_max=upper) for x in extrema_locs]
-    extrema_vals = [jnp.sin(x) - alpha * x for x in extrema_locs]
-
-    r_lower = utils.minimum_all(extrema_vals)
-    r_upper = utils.maximum_all(extrema_vals)
-
-    beta = 0.5 * (r_upper + r_lower)
-    delta = r_upper - beta
-
-    output = affine.apply_linear_approx(ctx, input, alpha, beta, delta)
+    output = uncertainty.apply_linear_approx(ctx, input, alpha, beta, delta)
     return output
 mlp.apply_func['uncertainty']['sin'] = sin
 

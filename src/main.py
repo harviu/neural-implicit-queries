@@ -53,19 +53,21 @@ def hierarchical(t):
 if __name__ == "__main__":
     # jax.config.update('jax_disable_jit', True)
     # jax.config.update("jax_debug_nans", True)
-
+    # jax.config.update("jax_enable_x64", True)
     data_bound = 1
-    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
-    data_type = data_opts[0]
     isovalue = 0
+
+    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
+    data_type = data_opts[2]
+    isovalue = 1
     if data_type == 'combustion':
         test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
         input_file = '../data/jet_chi_0054.dat'
         bounds = np.array([479, 339, 119])
         isovalue = 1
     elif data_type == 'vorts':
-        # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
-        test_model = 'sample_inputs/vorts_relu_5_128.npz'
+        test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+        # test_model = 'sample_inputs/vorts_relu_5_128.npz'
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
     elif data_type == 'asteroid':
@@ -76,28 +78,27 @@ if __name__ == "__main__":
         test_model = 'sample_inputs/eth_elu_5_128.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
-    data = load_data(data_type, input_file)
-    mean = data.mean()
-    std = data.std()
 
-    n_mc_depth = 7
+    # test_model = 'sample_inputs/bunny.npz'
+
+    n_mc_depth = 9
     t = 0.95
     batch_process_size = 2 ** 12
 
-    # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
-    mode = 'uncertainty_all'
+    modes = ['affine_all', 'affine_truncate','uncertainty_all', 'uncertainty_truncate']
+    mode = modes[2]
     affine_opts = {}
-    affine_opts['affine_n_truncate'] = 512
+    affine_opts['affine_n_truncate'] = 64
     affine_opts['affine_n_append'] = 4
     affine_opts['sdf_lipschitz'] = 1.
     truncate_policies = ['absolute', 'relative']
     affine_opts['affine_truncate_policy'] = truncate_policies[0]
 
     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
-    # print(params)
+    print(params.keys())
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
-    n_mc_subcell=3
+    n_mc_subcell= 3 #larger value may be useful for larger networks
 
     # warm up
     print("== Warming up")
@@ -131,5 +132,8 @@ if __name__ == "__main__":
     # print('[Tree IoU]', tree_iou)
 
     # save the binary files
+    # data = load_data(data_type, input_file)
+    # mean = data.mean()
+    # std = data.std()
     # vals_np = (vals_np * std) + mean
     # save_vtk(vals_np.shape, bounds / vals_np.shape, vals_np, 'test.vti')

@@ -260,7 +260,7 @@ def main():
     cast_frustum = False
     t = 0.95 # probability threshold
     mode = 'affine_all'
-    modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval']
+    modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 8
     affine_opts['affine_n_append'] = 4
@@ -298,7 +298,7 @@ def main():
             if mode != old_mode:
                 implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(args.input, mode=mode, **affine_opts)
 
-            if mode == 'affine_truncate':
+            if mode == 'affine_truncate' or mode =='uncertainty_truncate':
                 # truncate options
 
                 changed, affine_opts['affine_n_truncate'] = psim.InputInt("affine_n_truncate", affine_opts['affine_n_truncate'])
