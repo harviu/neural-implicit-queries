@@ -33,7 +33,6 @@ def dense(input, A, b, ctx):
 mlp.apply_func['uncertainty']['dense'] = dense
 
 def relu(input, ctx):
-    # Chebyshev bound
     mu, vecs, sigma, err = input
 
     if uncertainty.is_const(input):
@@ -67,7 +66,6 @@ def relu(input, ctx):
 mlp.apply_func['uncertainty']['relu'] = relu
 
 def elu(input, ctx):
-    # Chebyshev bound
     # Confusingly, elu has a parameter typically called 'alpha', and we also use 'alpha' for our linearizaiton notation. Here we simply ignore and do not support elu's alpha.
     mu, vecs, sigma, err = input
 
@@ -76,10 +74,6 @@ def elu(input, ctx):
 
     mu, sigma = uncertainty.radius(input)
     e = jnp.e
-
-    # test for values
-    # mu = jnp.full_like(mu, -1)
-    # sigma = jnp.full_like(mu, 7)
 
     # Compute the linearized approximation
     C = jax.scipy.special.erf(-mu / jnp.sqrt(2) / sigma)
@@ -124,10 +118,6 @@ def elu(input, ctx):
     delta = -C*C*mu*mu/4 - C*C*sigma*sigma/4 + C*E*mu*sigma +C*I*sigma*sigma/2 - E*E*sigma*sigma - I*I*sigma*sigma/4 - C*C*mu/2 + \
         C*E*sigma + C*I*mu/2 - E*I*sigma - I*sigma*sigma/2 - C*C/4 + C*I/2 + \
         E*sigma + J/2 - I*I/4 - I*mu/2 + mu*mu/4 + sigma*sigma/4 - I/2 + mu/2 + 1/4
-    # print(C[0], D[0], E[0], I[0], J[0])
-    # print(alpha[0], beta[0])
-    # print(delta[0])
-    # exit()
 
     delta = jnp.where(delta<0, 0, delta)
     delta = jnp.sqrt(delta)
@@ -136,16 +126,39 @@ def elu(input, ctx):
 mlp.apply_func['uncertainty']['elu'] = elu
 
 def sin(input, ctx):
-    # not-quite Chebyshev bound
     mu, vecs, sigma, err = input
 
     if uncertainty.is_const(input):
-        return jax.nn.elu(mu), vecs, sigma, err
+        return jnp.sin(mu), vecs, sigma, err
 
     mu, sigma = uncertainty.radius(input)
 
-    # Compute the linearized approximation
+    # mu = jnp.full_like(mu, 0.3, dtype=jnp.float64)
+    # sigma = jnp.full_like(mu, 0.9999, dtype=jnp.float64)
 
+    e = jnp.e
+    cos = jnp.cos(mu)
+    sin = jnp.sin(mu)
+
+    # Compute the linearized approximation
+    C = e ** (- sigma * sigma / 2)
+    # A = sin*C
+    # B = (mu*sin+sigma*sigma*cos)*C
+
+    alpha = cos * C
+    beta = (sin - mu * cos) * C
+
+    # delta = alpha*alpha*(sigma*sigma+mu*mu)+beta*beta+2*alpha*beta*mu-2*alpha*B-2*beta*A +\
+    #     (1-jnp.cos(2*mu)*C*C*C*C)/2
+    delta = (-sigma*sigma*cos*cos-sin*sin) * C*C + (1-jnp.cos(2*mu)*C*C*C*C)/2
+    # print(mu[:5])
+    # print(sigma[:5])
+    # print(delta[:5])
+    # exit()
+
+    # floating point inaccuracy
+    delta = jnp.where(delta<0, 0, delta)
+    delta = jnp.sqrt(delta)
     output = uncertainty.apply_linear_approx(ctx, input, alpha, beta, delta)
     return output
 mlp.apply_func['uncertainty']['sin'] = sin

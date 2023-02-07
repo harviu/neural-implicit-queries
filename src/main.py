@@ -58,16 +58,16 @@ if __name__ == "__main__":
     isovalue = 0
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
-    data_type = data_opts[2]
-    isovalue = 1
+    data_type = data_opts[0]
     if data_type == 'combustion':
         test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
         input_file = '../data/jet_chi_0054.dat'
         bounds = np.array([479, 339, 119])
         isovalue = 1
     elif data_type == 'vorts':
-        test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
+        # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
         # test_model = 'sample_inputs/vorts_relu_5_128.npz'
+        test_model = 'sample_inputs/vorts_sin_3_128.npz'
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
     elif data_type == 'asteroid':
@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
     # test_model = 'sample_inputs/bunny.npz'
 
-    n_mc_depth = 9
+    n_mc_depth = 8
     t = 0.95
     batch_process_size = 2 ** 12
 
