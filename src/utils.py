@@ -15,6 +15,7 @@ import polyscope as ps
 import polyscope.imgui as psim
 from vtkmodules import all as vtk
 from vtkmodules.util import numpy_support
+import netCDF4 as nc
 
 
 def iso_voxels(np_array,iso_value, get_level = False):
@@ -126,26 +127,6 @@ def save_vtk(res, delta, data, filename):
     writer.SetInputData(vtk_data)
     writer.Write()
 
-def get_ci_stack(aff, prob=0.95): # this is not correct
-    # aff = np.array(aff) # convert aff to np array
-    aff = np.abs(aff) # take the absolute value and make it symmetric
-    aff = np.sort(aff)[::-1]
-    acc = 0
-    acc_prob = 0
-    last_acc_prob = 0
-    for i, a in enumerate(aff[:-1]):
-        h = 1 / a
-        next_a = aff[i+1]
-        l = a - next_a
-        acc += h
-        acc_prob += acc * l
-        if acc_prob > 1 - prob:
-            residual = 1 - prob - last_acc_prob
-            residual_length = residual / acc
-            out_length = a - residual_length
-            break
-        last_acc_prob = acc_prob
-    return out_length
 
 def get_ci_mc(aff_matrix, prob=0.95, mc_number = 1000): #monte carlo sampling
     key = jax.random.PRNGKey(42)
@@ -166,9 +147,16 @@ def load_data(data_type, data_path):
         data = load_combustion_data(data_path)
     elif data_type == 'ethanediol':
         data = load_ethanediol_data(data_path)
+    elif data_type == 'isotropic':
+        data = load_isotropic_data(data_path)
     else:
         raise ValueError("not implemented data type")
     return data
+
+def load_isotropic_data(data_path):
+    ds = nc.Dataset(data_path)
+    numpy_array = ds['a'][:]
+    return jnp.asarray(numpy_array)
 
 def load_vorts_data(res, data_path):
     data = np.fromfile(data_path, '<f4')[3:].reshape(res,res,res)

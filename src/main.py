@@ -28,10 +28,10 @@ def dense_recon():
         sdf_vals = np.array(sdf_vals, copy=True)
         sdf_vals = sdf_vals.reshape(grid_res)
         # marching cubes
-        delta = 1 / (np.array(grid_res) - 1)
-        bbox_min = grid[0,:]
-        verts, faces, normals, values = measure.marching_cubes(sdf_vals, level=isovalue, spacing=delta)
-        verts = verts + bbox_min[None,:]
+        # delta = 1 / (np.array(grid_res) - 1)
+        # bbox_min = grid[0,:]
+        # verts, faces, normals, values = measure.marching_cubes(sdf_vals, level=isovalue, spacing=delta)
+        # verts = verts + bbox_min[None,:]
         return sdf_vals
 
 def hierarchical(t):
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     data_bound = 1
     isovalue = 0
 
-    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol']
-    data_type = data_opts[0]
+    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic']
+    data_type = data_opts[4]
     if data_type == 'combustion':
         test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
         input_file = '../data/jet_chi_0054.dat'
@@ -67,22 +67,29 @@ if __name__ == "__main__":
     elif data_type == 'vorts':
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
         # test_model = 'sample_inputs/vorts_relu_5_128.npz'
-        test_model = 'sample_inputs/vorts_sin_3_128.npz'
+        test_model = 'sample_inputs/vorts_sin_5_128.npz'
+        isovalue = 2
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
     elif data_type == 'asteroid':
-        test_model = 'sample_inputs/v02_z_lr_elu_5_128.npz'
+        # test_model = 'sample_inputs/v02_z_lr_elu_5_128.npz'
+        test_model = 'sample_inputs/v02_z_sin_5_128.npz'
         input_file = '../data/99_500_v02.bin'
         bounds = np.array([499, 499, 499])
     elif data_type == 'ethanediol':
         test_model = 'sample_inputs/eth_elu_5_128.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
+    elif data_type == 'isotropic':
+        test_model = 'sample_inputs/iso_sin_5_128.npz'
+        input_file = '../data/Isotropic.nz'
+        bounds = np.array([1024,1024,1024])
 
     # test_model = 'sample_inputs/bunny.npz'
 
-    n_mc_depth = 8
-    t = 0.95
+    n_mc_depth = 10
+    t = 0.95   # for sine function: 0.99999 will give all voxels
+    n_mc_subcell= 3   #larger value may be useful for larger networks
     batch_process_size = 2 ** 12
 
     modes = ['affine_all', 'affine_truncate','uncertainty_all', 'uncertainty_truncate']
@@ -98,7 +105,6 @@ if __name__ == "__main__":
     print(params.keys())
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
-    n_mc_subcell= 3 #larger value may be useful for larger networks
 
     # warm up
     print("== Warming up")
@@ -112,24 +118,32 @@ if __name__ == "__main__":
 
     # correctness
     if t<1:
-        with Timer("Calcuate IoU"):
-            iso = iso_voxels(np.asarray(vals_np), isovalue)
-            true_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
-            true_mask[iso] = True
-            our_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
-            our_mask[indices] = True
-            iou = (true_mask & our_mask).sum() / (true_mask | our_mask).sum()
-            print('[iou]', iou)
+        iso = iso_voxels(np.asarray(vals_np), isovalue)
+        true_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
+        true_mask[iso] = True
+        our_mask = np.zeros(((2 ** n_mc_depth + 1)**3,),np.bool_)
+        our_mask[indices] = True
+        iou = (true_mask & our_mask).sum() / (true_mask | our_mask).sum()
+        print('[iou]', iou)
 
     # compare tree
-    # num_level = (n_mc_depth - n_mc_subcell) * 3
-    # true_kd_array = kd_tree_array(implicit_func, params, num_level, dense=True, vals = vals_np)
-    # kd_array = kd_tree_array(implicit_func, params, num_level, prob_threshold=t, dense=False)
-    # # only the last level
-    # true_kd_array = true_kd_array[-2 ** num_level:]
-    # kd_array = kd_array[-2 ** num_level:]
-    # tree_iou = (true_kd_array & kd_array).sum() / (true_kd_array | kd_array).sum()
-    # print('[Tree IoU]', tree_iou)
+    num_level = (n_mc_depth - n_mc_subcell) * 3
+    true_kd_array = kd_tree_array(implicit_func, params, num_level, dense=True, vals = vals_np)
+    kd_array = kd_tree_array(implicit_func, params, num_level, prob_threshold=t, dense=False)
+    # only the last level
+    only_leaf = True
+    if only_leaf == True:
+        true_kd_array = true_kd_array[-2 ** num_level:]
+        kd_array = kd_array[-2 ** num_level:]
+    #IoU
+    tree_iou = (true_kd_array & kd_array).sum() / (true_kd_array | kd_array).sum()
+    print('[Tree IoU]', tree_iou)
+    # F_score
+    TP = (true_kd_array & kd_array).sum()
+    FP = (~true_kd_array & kd_array).sum()
+    FN = (true_kd_array & ~kd_array).sum()
+    f_score = TP/(TP+(FP+FN)/2)
+    print('[Tree F-score]', f_score)
 
     # save the binary files
     # data = load_data(data_type, input_file)

@@ -39,7 +39,7 @@ def main():
     # loss / data
     parser.add_argument("--n_epochs", type=int, default=100)
     # parser.add_argument("--n_samples", type=int, default=128 * 128 * 128)
-    parser.add_argument("--data_type", type=str, default='vorts', choices=['vorts', 'asteroid', 'combustion', 'ethanediol'])
+    parser.add_argument("--data_type", type=str, default='vorts', choices=['vorts', 'asteroid', 'combustion', 'ethanediol', 'isotropic'])
     
     # training
     parser.add_argument("--lr", type=float, default=1e-2)
@@ -94,11 +94,7 @@ def main():
     samp, samp_v = sample_volume(data.shape, data)
 
     samp_target = samp_v
-    if args.data_type == 'combustion':
-        # samp_weight = samp_target + 1.1
-        samp_weight = jnp.ones_like(samp_target)
-    else:
-        samp_weight = jnp.ones_like(samp_target)
+    samp_weight = jnp.ones_like(samp_target)
 
     print(f"  ...done")
 
@@ -165,21 +161,26 @@ def main():
     def generate_batch(rngkey, samples_in, samples_out, samples_weight):
 
         # concatenate to make processing easier
-        samples = jnp.concatenate((samples_in, samples_out[:,None], samples_weight[:,None]), axis=-1)
+        # samples = jnp.concatenate((samples_in, samples_out[:,None], samples_weight[:,None]), axis=-1)
 
         # shuffle
-        samples = jax.random.permutation(rngkey, samples, axis=0)
+        # samples = jax.random.permutation(rngkey, samples, axis=0)
+        shuffled_index = jax.random.permutation(rngkey, samples_in.shape[0])
 
         # split in to batches
         # (discard any extra samples)
-        batch_count = samples.shape[0] // args.batch_size
+        batch_count = samples_in.shape[0] // args.batch_size
         n_batch_total = args.batch_size * batch_count
-        samples = samples[:n_batch_total, :]
+        # samples = samples[:n_batch_total, :]
+        shuffled_index = shuffled_index[:n_batch_total]
 
         # split back up
-        samples_in = samples[:,:3]
-        samples_out = samples[:,3]
-        samples_weight = samples[:,4]
+        # samples_in = samples[:,:3]
+        # samples_out = samples[:,3]
+        # samples_weight = samples[:,4]
+        samples_in = samples_in[shuffled_index]
+        samples_out = samples_out[shuffled_index]
+        samples_weight = samples_weight[shuffled_index]
 
         batch_in = jnp.reshape(samples_in, (batch_count, args.batch_size, 3))
         batch_out = jnp.reshape(samples_out, (batch_count, args.batch_size))
@@ -226,13 +227,14 @@ def main():
         opt_state = opt.update_fn(i_epoch, grads, opt_state)
         
         return value, opt_state
+    
+    #try creating the batch before
+    key, subkey = jax.random.split(key)
+    batches_in, batches_out, batches_weight, n_batches = generate_batch(subkey, samp, samp_target, samp_weight)
 
     print(f"Training...")
     i_step = 0
     for i_epoch in range(args.n_epochs):
-        
-        key, subkey = jax.random.split(key)
-        batches_in, batches_out, batches_weight, n_batches = generate_batch(subkey, samp, samp_target, samp_weight)
         losses = []
         n_total = 0
 
