@@ -364,7 +364,7 @@ def extract_triangles_from_cell(func, params, mc_data, cell_lower, cell_upper, v
     return all_tri_pos, tri_is_valid
 
 @partial(jax.jit, static_argnames=("func", "n_sub_depth", "batch_eval_size"))
-def extract_triangles_from_subcells(func, params, isovalue, mc_data, n_sub_depth, cell_lower, cell_upper, batch_eval_size=4096):
+def extract_triangles_from_subcells(func, params, isovalue, mc_data, n_sub_depth, cell_lower, cell_upper, batch_eval_size=4913):
     
     tri_table, edge_verts, vert_logical_coords = mc_data
 
