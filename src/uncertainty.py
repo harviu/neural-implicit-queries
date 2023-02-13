@@ -103,7 +103,7 @@ def is_const(input):
     return True
 
 
-# Compute the 'radius' given a specific z
+# Compute the mu and sigma 
 def radius(input):
     if is_const(input): return 0.
     mu, vecs, sigma, err = input

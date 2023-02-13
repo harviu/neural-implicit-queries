@@ -596,43 +596,48 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
 
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
-    out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
-    node_valid = out_dict['unknown_node_valid']
-    node_lower = out_dict['unknown_node_lower']
-    node_upper = out_dict['unknown_node_upper']
+    from utils import Timer
+    with Timer("\tfind nodes"):
+        out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), \
+                                                        isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
+        node_valid = out_dict['unknown_node_valid']
+        node_lower = out_dict['unknown_node_lower']
+        node_upper = out_dict['unknown_node_upper']
 
-    # fetch the extraction data
-    mc_data = extract_cell.get_mc_data()
+    with Timer("\thierarchical mc"):
+        # fetch the extraction data
+        mc_data = extract_cell.get_mc_data()
 
-    # Extract triangle from the valid nodes (do it in batches in case there are a lot)
-    extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_subcell_depth)**3)
-    extract_batch_size = get_next_bucket_size(extract_batch_size)
-    N_cell = node_valid.shape[0]
-    N_valid = int(jnp.sum(node_valid))
-    n_out_written = 0
-    tri_pos_out = jnp.zeros((1, 3, 3))
+        # Extract triangle from the valid nodes (do it in batches in case there are a lot)
+        extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_subcell_depth)**3)
+        extract_batch_size = get_next_bucket_size(extract_batch_size)
+        N_cell = node_valid.shape[0]
+        N_valid = int(jnp.sum(node_valid))
+        print("[\tunknown voxels]", N_valid)
+        n_out_written = 0
+        tri_pos_out = jnp.zeros((1, 3, 3))
 
-    init_bucket_size = node_lower.shape[0]
-    this_b = min(extract_batch_size, init_bucket_size)
-    node_valid = jnp.reshape(node_valid, (-1, this_b))
-    node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
-    node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
-    nb = node_lower.shape[0]
-    n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
-    max_tri_round = this_b * 5 * (2**n_subcell_depth)**3
-    for ib in range(n_occ):
+        init_bucket_size = node_lower.shape[0]
+        this_b = min(extract_batch_size, init_bucket_size)
+        node_valid = jnp.reshape(node_valid, (-1, this_b))
+        node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
+        node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
+        nb = node_lower.shape[0]
+        n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
+        max_tri_round = this_b * 5 * (2**n_subcell_depth)**3
+        for ib in range(n_occ):
 
-        # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
+            # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
-        # expand the output array only lazily as needed
-        while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
-            tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
-        
-        tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
+            # expand the output array only lazily as needed
+            while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
+                tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
+            
+            tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
 
-    # clip the result triangles
-    # TODO bucket and mask here? need to if we want this in a JIT loop
-    tri_pos_out = tri_pos_out[:n_out_written,:]
+        # clip the result triangles
+        # TODO bucket and mask here? need to if we want this in a JIT loop
+        tri_pos_out = tri_pos_out[:n_out_written,:]
 
     return tri_pos_out
 
@@ -744,9 +749,56 @@ def hierarchical_iso_voxels(func, params, isovalue, lower, upper, depth, n_subce
     # clip the result triangles
     # TODO bucket and mask here? need to if we want this in a JIT loop
     indices_out = indices_out[:n_out_written]
-    print("[unknown voxels]", N_valid)
-
     return indices_out
+
+def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell):
+    # need subcell depth because it calculate the extra boundary grids in inference
+    side_n_cells = 2**(n_mc_depth- n_mc_subcell)
+    side_n_pts = (1+side_n_cells)
+    side_coords0 = jnp.linspace(-1,1, num=side_n_pts)
+    side_coords1 = jnp.linspace(-1,1, num=side_n_pts)
+    side_coords2 = jnp.linspace(-1,1, num=side_n_pts)
+    grid_coords0, grid_coords1, grid_coords2 = jnp.meshgrid(side_coords0[0:-1], side_coords1[0:-1], side_coords2[0:-1], indexing='ij')
+    node_lower = jnp.stack((grid_coords0.flatten(), grid_coords1.flatten(), grid_coords2.flatten()), axis=-1)
+    grid_coords0, grid_coords1, grid_coords2 = jnp.meshgrid(side_coords0[1:], side_coords1[1:], side_coords2[1:], indexing='ij')
+    node_upper = jnp.stack((grid_coords0.flatten(), grid_coords1.flatten(), grid_coords2.flatten()), axis=-1)
+    node_valid = jnp.ones((node_lower.shape[0]),jnp.bool_)
+
+    # fetch the extraction data
+    mc_data = extract_cell.get_mc_data()
+    extract_batch_max_tri_out = 2**20
+    assert extract_batch_max_tri_out > (5 * (2**n_mc_subcell)**3)
+    # Extract triangle from the valid nodes (do it in batches in case there are a lot)
+    extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_mc_subcell)**3)
+    extract_batch_size = get_next_bucket_size(extract_batch_size)
+    N_cell = node_valid.shape[0]
+    N_valid = int(jnp.sum(node_valid))
+    print("[\ttotal large blocks]", N_valid)
+    n_out_written = 0
+    tri_pos_out = jnp.zeros((1, 3, 3))
+
+    init_bucket_size = node_lower.shape[0]
+    this_b = min(extract_batch_size, init_bucket_size)
+    node_valid = jnp.reshape(node_valid, (-1, this_b))
+    node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
+    node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
+    nb = node_lower.shape[0]
+    n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
+    max_tri_round = this_b * 5 * (2**n_mc_subcell)**3
+    for ib in range(n_occ):
+
+        # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
+
+        # expand the output array only lazily as needed
+        while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
+            tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
+        
+        tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(implicit_func, params, mc_data, n_mc_subcell, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
+
+    # clip the result triangles
+    # TODO bucket and mask here? need to if we want this in a JIT loop
+    tri_pos = tri_pos_out[:n_out_written,:]
+    return tri_pos
    
 @partial(jax.jit, static_argnames=("func_tuple","viz_nodes"))
 def find_any_intersection_iter(

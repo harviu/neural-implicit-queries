@@ -105,10 +105,11 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     data_bound = opts['data_bound']
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
-    n_mc_subcell=3
+    n_mc_subcell = 3
     batch_size = 2 ** 13
 
     print(f"do_hierarchical_mc {n_mc_depth}")
+    print("Subcell_depth", n_mc_subcell)
     
 
     with Timer("extract mesh"):
@@ -150,19 +151,12 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
 
     if compute_dense_cost:
         # Construct the regular grid
-        with Timer("full recon"):
-            grid_res = 2 ** n_mc_depth + 1
-            ax_coords = jnp.linspace(-1., 1., grid_res)
-            grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ax_coords, ax_coords, indexing='ij')
-            grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
-            delta = (grid[1,2] - grid[0,2]).item()
-            # sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
-            sdf_vals = evaluate_implicit_fun(implicit_func, params, grid, batch_eval_size=batch_size)
-            sdf_vals = sdf_vals.reshape(grid_res, grid_res, grid_res)
-            bbox_min = grid[0,:]
-            verts, faces, normals, values = measure.marching_cubes(np.array(sdf_vals), level=isovalue, spacing=(delta, delta, delta))
-            verts = verts + bbox_min[None,:]
-        ps.register_surface_mesh("coarse shape preview", verts, faces, enabled=False) 
+        with Timer("dense recon (GPU)"):
+            tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
+            tri_pos.block_until_ready()
+            tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+            tri_pos = jnp.reshape(tri_pos, (-1,3))
+        ps.register_surface_mesh("coarse shape preview", np.array(tri_pos), np.array(tri_inds), enabled=False) 
 
 def do_closest_point(opts, func, params, n_closest_point):
 
@@ -442,9 +436,9 @@ def main():
         az_coords = jnp.linspace(-1., 1., grid_res[2])
         grid_x, grid_y, grid_z = jnp.meshgrid(ax_coords, ay_coords, az_coords, indexing='ij')
         grid = jnp.stack((grid_x.flatten(), grid_y.flatten(), grid_z.flatten()), axis=-1)
-        sdf_vals = evaluate_implicit_fun(implicit_func, params, grid)
-        sdf_vals = np.array(sdf_vals, copy=True)
-        sdf_vals = sdf_vals.reshape(grid_res, order='C')
+        sdf_vals = jax.vmap(partial(implicit_func, params))(grid)
+        sdf_vals = sdf_vals.reshape(grid_res)
+        sdf_vals = np.array(sdf_vals)
         print(sdf_vals.min(), sdf_vals.max())
         # marching cubes
         delta = 2 / (np.array(grid_res) - 1)
