@@ -37,9 +37,9 @@ class ImplicitFunction:
         vecs = jnp.diag(pos_vec)
         
         # compute the z
-        t = prob_threshold ** (1/num_grid)
-        z = norm.ppf(0.5 + 0.5 * t)
-        return self.classify_general_box(params, center, vecs, isovalue=isovalue, offset=offset, z = z )
+        # t = prob_threshold ** (1/num_grid)
+        # z = norm.ppf(0.5 + 0.5 * t)
+        return self.classify_general_box(params, center, vecs, isovalue=isovalue, offset=offset, threshold=prob_threshold, num_grid=num_grid )
 
     def estimate_box_bounds(self, params, box_lower, box_upper):
         center = 0.5 * (box_lower + box_upper)
@@ -48,7 +48,7 @@ class ImplicitFunction:
         return self.estimate_general_box_bounds(params, center, vecs)
 
     # General version for non-axis-aligned boxes
-    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., z=2.):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 0, num_grid = 1):
         '''
         Determine the sign of the function within a general box (reports one of SIGN_UNKNOWN, etc)
         '''

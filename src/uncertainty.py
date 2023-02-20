@@ -3,7 +3,7 @@ import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import norm
+from jax.scipy.stats import norm
 
 import jax
 import jax.numpy as jnp
@@ -32,7 +32,7 @@ class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
     # def classify_box(self, params, box_lower, box_upper):
         # pass
         
-    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., z = 2):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 0., num_grid= 1):
 
         d = box_center.shape[-1]
         v = box_vecs.shape[-2]
@@ -46,12 +46,21 @@ class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
 
         # compute relevant bounds
         # compute the justified prob_threshold
+        t = threshold ** (1/num_grid)
+        z = norm.ppf(0.5 + 0.5 * t)
         may_lower, may_upper = may_contain_bounds(keep_ctx, output, z=z)
+        
+        # get the output mean and std
+        # mu, sigma = radius(output)
+        # p = norm.cdf((isovalue - mu)/sigma)
+        # p_non = p ** num_grid + (1-p) ** num_grid
 
         # determine the type of the region
         output_type = SIGN_UNKNOWN
         output_type = jnp.where(may_lower > isovalue+offset, SIGN_POSITIVE, output_type)
         output_type = jnp.where(may_upper < isovalue-offset, SIGN_NEGATIVE, output_type)
+        # output_type = jnp.where((p_non > threshold) & (mu > isovalue + offset), SIGN_POSITIVE, output_type)
+        # output_type = jnp.where((p_non > threshold) & (mu < isovalue - offset), SIGN_NEGATIVE, output_type)
 
         return output_type
 
