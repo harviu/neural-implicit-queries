@@ -3,7 +3,7 @@ import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import norm
+from jax.scipy.stats import norm
 
 import jax
 import jax.numpy as jnp
