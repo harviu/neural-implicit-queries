@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import datetime
 
 import numpy as np
-import numba as nb
 
 import polyscope as ps
 import polyscope.imgui as psim
@@ -17,101 +16,6 @@ from vtkmodules import all as vtk
 from vtkmodules.util import numpy_support
 import netCDF4 as nc
 
-
-def iso_voxels(np_array,iso_value, get_level = False):
-    return_array,level_volume, total_access = iso_voxels_numba(np_array, iso_value, get_level)
-    if get_level:
-        return return_array,level_volume, total_access
-    else:
-        return return_array
-
-# function to get the gt iso values
-@nb.jit(nopython=True)
-def iso_voxels_numba(np_array,iso_value, get_level = False):
-    grid_res = np_array.shape[0]
-    vol_res = grid_res -1
-    neg_array = np_array < iso_value
-    pos_array = np_array >= iso_value
-    if get_level:
-        ideal_grid = np.zeros_like(np_array,dtype=np.int32)
-        ideal_volume = np.zeros((vol_res,vol_res,vol_res),dtype=np.int32)
-    return_array = []
-    for i in range(vol_res):
-        for j in range(vol_res):
-            for k in range(vol_res):
-                local_idx = (
-                    (i,i,i,i,i+1,i+1,i+1,i+1),
-                    (j,j,j+1,j+1,j,j,j+1,j+1),
-                    (k,k+1,k,k+1,k,k+1,k,k+1),
-                )
-                local_idx = np.array(local_idx).T
-                neg = False
-                pos = False
-                for idx in local_idx:
-                    if neg_array[idx[0],idx[1],idx[2]]:
-                        neg = True
-                    if pos_array[idx[0],idx[1],idx[2]]:
-                        pos = True
-                if pos and neg:
-                    return_array.append(i * vol_res * vol_res + j * vol_res + k)
-                    if get_level:
-                        ideal_volume[i,j,k] = 1
-                        # also mark all grids as true to calculate 
-                        for idx in local_idx:
-                            ideal_grid[idx[0],idx[1],idx[2]] = 1
-    if get_level:
-        level_volume, total_access = get_level_acess(ideal_volume, ideal_grid)
-    return return_array,level_volume, total_access
-
-@nb.jit(nopython=True)
-def get_level_acess(ideal_volume, ideal_grid):
-    res = ideal_volume.shape[0]
-    new_res = res
-    last_volume = ideal_volume
-    level_volume = ideal_volume.copy()
-    while True:
-        new_res = new_res // 2
-        if new_res == 0:
-            break
-        new_volume = np.zeros((new_res,new_res,new_res), np.int32)
-        for l in range(new_res):
-            for m in range(new_res):
-                for n in range(new_res):
-                    i = 2 * l
-                    j = 2 * m
-                    k = 2 * n
-                    local_idx = (
-                        (i,i,i,i,i+1,i+1,i+1,i+1),
-                        (j,j,j+1,j+1,j,j,j+1,j+1),
-                        (k,k+1,k,k+1,k,k+1,k,k+1),
-                    )
-                    local_idx = np.array(local_idx).T
-                    for idx in local_idx:
-                        if last_volume[idx[0],idx[1],idx[2]]:
-                            new_volume[l,m,n] = 1
-                            # update new grid
-                            for it1 in range(3):
-                                for it2 in range(3):
-                                    for it3 in range(3):
-                                        block_size = res // new_res 
-                                        # we mark all children
-                                        cx = int(l * block_size + it1 * (block_size // 2))
-                                        cy = int(m * block_size + it2 * (block_size // 2))
-                                        cz = int(n * block_size + it3 * (block_size // 2))
-                                        ideal_grid[cx, cy, cz] = 1
-                            #update level volume
-                            level_volume[
-                                l*block_size:(l+1)*block_size,
-                                m*block_size:(m+1)*block_size,
-                                n*block_size:(n+1)*block_size,
-                                ] += 1
-                            break
-        last_volume = new_volume
-
-        # volume_list.append(new_volume)
-        # grid_list.append(new_grid)
-    total_access = ideal_grid.sum()
-    return level_volume, total_access
 
 def save_vtk(res, delta, data, filename):
     vtk_data = vtk.vtkImageData()
@@ -126,16 +30,6 @@ def save_vtk(res, delta, data, filename):
     writer.SetFileName(filename)
     writer.SetInputData(vtk_data)
     writer.Write()
-
-
-def get_ci_mc(aff_matrix, prob=0.95, mc_number = 1000): #monte carlo sampling
-    key = jax.random.PRNGKey(42)
-    samples = jax.random.uniform(key, (mc_number, *aff_matrix.shape)) # (mc_number, batch_size, n_aff)
-    samples = samples * 2 - 1
-    radius = (samples * aff_matrix[None,...]).sum(-1)  # (mc_number, batch_size)
-    radius = jnp.sort(radius, axis=0)
-    idx = int((1-prob) / 2 * mc_number)
-    return radius[idx], radius[-1-idx]
 
 def load_data(data_type, data_path):
     

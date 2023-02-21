@@ -1,19 +1,17 @@
 import igl # work around some env/packaging problems by loading this first
 
-import sys, os, time, math
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 
 from skimage import measure
+import numpy as np
 
 
 # Imports from this project
-from geometry import *
-from utils import *
-from kd_tree import *
-import implicit_mlp_utils, extract_cell
+from utils import evaluate_implicit_fun, Timer
+from evaluation import dense_recon_with_hierarchical_mc, hierarchical_iso_voxels, kd_tree_array, iso_voxels
+from kd_tree import hierarchical_marching_cubes
+import implicit_mlp_utils
 
 def get_dense_values():
     # Construct the regular grid
@@ -63,7 +61,7 @@ if __name__ == "__main__":
     isovalue = 0
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic']
-    data_type = data_opts[0]
+    data_type = data_opts[4]
     if data_type == 'combustion':
         test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
         input_file = '../data/jet_chi_0054.dat'
@@ -71,8 +69,8 @@ if __name__ == "__main__":
         isovalue = 1
     elif data_type == 'vorts':
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
-        # test_model = 'sample_inputs/vorts_relu_5_128.npz'
-        test_model = 'sample_inputs/vorts_sin_5_128.npz'
+        test_model = 'sample_inputs/vorts_relu_5_128.npz'
+        # test_model = 'sample_inputs/vorts_sin_5_128.npz'
         isovalue = 0
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
@@ -92,7 +90,7 @@ if __name__ == "__main__":
 
     # test_model = 'sample_inputs/bunny.npz'
 
-    n_mc_depth = 8
+    n_mc_depth = 10
     t = 0.95   # for sine function: 0.99999 will give all voxels
     n_mc_subcell= 3  #larger value may be useful for larger networks
     batch_process_size = 2 ** 13

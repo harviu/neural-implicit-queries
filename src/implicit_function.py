@@ -36,9 +36,6 @@ class ImplicitFunction:
         pos_vec = box_upper - center
         vecs = jnp.diag(pos_vec)
         
-        # compute the z
-        # t = prob_threshold ** (1/num_grid)
-        # z = norm.ppf(0.5 + 0.5 * t)
         return self.classify_general_box(params, center, vecs, isovalue=isovalue, offset=offset, threshold=prob_threshold, num_grid=num_grid )
 
     def estimate_box_bounds(self, params, box_lower, box_upper):
