@@ -64,21 +64,22 @@ class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
 
         return output_type
 
-    # def estimate_general_box_bounds(self, params, box_center, box_vecs):
-    #     d = box_center.shape[-1]
-    #     v = box_vecs.shape[-2]
-    #     assert box_center.shape == (d,), "bad box_vecs shape"
-    #     assert box_vecs.shape == (v,d), "bad box_vecs shape"
-    #     keep_ctx = dataclasses.replace(self.ctx, affine_domain_terms=v)
+    def get_paf(self, params, lower, upper):
+        center = 0.5 * (lower + upper)
+        pos_vec = upper - center
+        vecs = jnp.diag(pos_vec)
+        d = center.shape[-1]
+        v = vecs.shape[-2]
+        assert center.shape == (d,), "bad box_vecs shape"
+        assert vecs.shape == (v,d), "bad box_vecs shape"
+        keep_ctx = dataclasses.replace(self.ctx, affine_domain_terms=v)
 
-    #     # evaluate the function
-    #     input = coordinates_in_general_box(keep_ctx, box_center, box_vecs)
-    #     output = self.affine_func(params, input, {'ctx' : keep_ctx})
-    #     base, aff, err = output
+        # evaluate the function
+        input = coordinates_in_general_box(keep_ctx, center, vecs)
+        output = self.affine_func(params, input, {'ctx' : keep_ctx})
+        mu, sigma = radius(output)
 
-    #     # compute relevant bounds
-    #     may_lower, may_upper = may_contain_bounds(keep_ctx, output)
-    #     return may_lower, may_upper, base, aff, err # return output for debug reason
+        return mu, sigma # return output for debug reason
 
 # === Affine utilities
 

@@ -9,7 +9,7 @@ import numpy as np
 
 # Imports from this project
 from utils import evaluate_implicit_fun, Timer
-from evaluation import dense_recon_with_hierarchical_mc, hierarchical_iso_voxels, kd_tree_array, iso_voxels
+from evaluation import dense_recon_with_hierarchical_mc, hierarchical_iso_voxels, kd_tree_array, iso_voxels, compare_mc_clt
 from kd_tree import hierarchical_marching_cubes
 import implicit_mlp_utils
 
@@ -60,47 +60,53 @@ if __name__ == "__main__":
     data_bound = 1
     isovalue = 0
 
-    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic']
-    data_type = data_opts[4]
-    if data_type == 'combustion':
-        test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
-        input_file = '../data/jet_chi_0054.dat'
-        bounds = np.array([479, 339, 119])
-        isovalue = 1
-    elif data_type == 'vorts':
+    data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
+    data_type = 0
+    if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
-        test_model = 'sample_inputs/vorts_relu_5_128.npz'
-        # test_model = 'sample_inputs/vorts_sin_5_128.npz'
+        # test_model = 'sample_inputs/vorts_relu_5_128.npz'
+        test_model = 'sample_inputs/vorts_sin_5_128.npz'
         isovalue = 0
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
-    elif data_type == 'asteroid':
+    elif data_type == 1:
         # test_model = 'sample_inputs/v02_z_lr_elu_5_128.npz'
         test_model = 'sample_inputs/v02_z_sin_5_128.npz'
         input_file = '../data/99_500_v02.bin'
         bounds = np.array([499, 499, 499])
-    elif data_type == 'ethanediol':
+    elif data_type == 2:
+        test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
+        input_file = '../data/jet_chi_0054.dat'
+        bounds = np.array([479, 339, 119])
+        isovalue = 1
+    elif data_type == 3:
         test_model = 'sample_inputs/eth_elu_5_128.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
-    elif data_type == 'isotropic':
+    elif data_type == 4:
         test_model = 'sample_inputs/iso_sin_5_128.npz'
         input_file = '../data/Isotropic.nz'
         bounds = np.array([1024,1024,1024])
+    elif data_type == 5:
+        test_model = 'sample_inputs/fox.npz'
+    elif data_type == 6:
+        test_model = 'sample_inputs/hammer.npz'
+    elif data_type == 7:
+        test_model = 'sample_inputs/birdcage_occ.npz'
+    elif data_type == 8:
+        test_model = 'sample_inputs/bunny.npz'
 
     # test_model = 'sample_inputs/bunny.npz'
 
-    n_mc_depth = 10
-    t = 0.95   # for sine function: 0.99999 will give all voxels
+    n_mc_depth = 8
+    t = 1   # for sine function: 0.99999 will give all voxels
     n_mc_subcell= 3  #larger value may be useful for larger networks
     batch_process_size = 2 ** 13
     evaluate = True
     only_leaf = True
 
     modes = ['affine_all', 'affine_truncate','uncertainty_all', 'uncertainty_truncate']
-    mode = modes[2]
-    if mode == 'affine_all':
-        t = 1
+    mode = modes[0]
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 64
     affine_opts['affine_n_append'] = 4
@@ -114,6 +120,17 @@ if __name__ == "__main__":
     print(params.keys())
     lower = jnp.array((-data_bound, -data_bound, -data_bound))
     upper = jnp.array((data_bound, data_bound, data_bound))
+
+    # vals, mu, sigma = compare_mc_clt(implicit_func, params, lower, upper)
+    # from matplotlib import pyplot as plt
+    # from scipy.stats import norm
+    # counts, bins = np.histogram(vals, 100,density=True)
+    # # counts = np.array(counts) / len(vals)
+    # plt.stairs(counts, bins)
+    # x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
+    # y = norm.pdf(x, mu, sigma)
+    # plt.plot(x,y)
+    # plt.savefig('compare.png')
 
     # warm up
     print("== Warming up")
@@ -150,10 +167,6 @@ if __name__ == "__main__":
             if only_leaf == True:
                 true_kd_array = true_kd_array[-2 ** num_level:]
                 kd_array = kd_array[-2 ** num_level:]
-            # IoU
-            # use F-score instead
-            # tree_iou = (true_kd_array & kd_array).sum() / (true_kd_array | kd_array).sum()
-            # print('[Tree IoU]', tree_iou)
             # F_score
             TP = (true_kd_array & kd_array).sum()
             FP = (~true_kd_array & kd_array).sum()
