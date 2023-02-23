@@ -264,7 +264,7 @@ def main():
     opts['tree_split_aff'] = False
     cast_frustum = False
     t = 0.95 # probability threshold
-    mode = 'affine_all'
+    mode = 'uncertainty_all'
     modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 8
