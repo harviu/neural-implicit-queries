@@ -74,6 +74,23 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
         # compute relevant bounds
         may_lower, may_upper = may_contain_bounds(keep_ctx, output)
         return may_lower, may_upper, base, aff, err # return output for debug reason
+    
+    def get_paf(self, params, lower, upper):
+        center = 0.5 * (lower + upper)
+        pos_vec = upper - center
+        vecs = jnp.diag(pos_vec)
+        d = center.shape[-1]
+        v = vecs.shape[-2]
+        assert center.shape == (d,), "bad box_vecs shape"
+        assert vecs.shape == (v,d), "bad box_vecs shape"
+        keep_ctx = dataclasses.replace(self.ctx, affine_domain_terms=v)
+
+        # evaluate the function
+        input = coordinates_in_general_box(keep_ctx, center, vecs)
+        output = self.affine_func(params, input, {'ctx' : keep_ctx})
+        mu, sigma = get_distribution(output)
+
+        return mu, sigma 
 
 # === Affine utilities
 
@@ -152,6 +169,14 @@ def may_contain_bounds_mc(ctx, input,):
         left -= err
         right += err
     return base + left, base + right
+
+def get_distribution(input):
+    base, aff, err = input
+    rad_act_aff = jnp.sum(aff ** 2, axis=0)
+    if err is not None:
+        rad_act_aff += err * err
+    sigma = jnp.sqrt(rad_act_aff / 3)
+    return base ,sigma
 
 def may_contain_bounds_clt(ctx, input, z=2, box_dim = 3):
     base, aff, err = input

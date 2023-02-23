@@ -79,7 +79,7 @@ class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
         output = self.affine_func(params, input, {'ctx' : keep_ctx})
         mu, sigma = radius(output)
 
-        return mu, sigma # return output for debug reason
+        return mu, sigma 
 
 # === Affine utilities
 
