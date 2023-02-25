@@ -119,9 +119,10 @@ def sample_volume(res, data):
     return samp, samp_v
 
 class Timer(object):
-    def __init__(self, name=None, filename=None):
+    def __init__(self, name=None, filename=None, warmup = False):
         self.name = name 
         self.filename = filename
+        self.warmup = warmup
 
     def __enter__(self):
         self.tstart = time.time()
@@ -130,7 +131,7 @@ class Timer(object):
         message = 'Elapsed: %.3f seconds' % (time.time() - self.tstart)
         if self.name:
             message = '[%s] ' % self.name + message
-        print(message)
+        if not self.warmup: print(message)
         if self.filename:
             with open(self.filename, 'a') as file:
                 print(str(datetime.datetime.now()) + ": ", message, file=file)

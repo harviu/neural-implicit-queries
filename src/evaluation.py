@@ -184,7 +184,6 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
     extract_batch_size = get_next_bucket_size(extract_batch_size)
     N_cell = node_valid.shape[0]
     N_valid = int(jnp.sum(node_valid))
-    print("[\ttotal large blocks]", N_valid)
     n_out_written = 0
     tri_pos_out = jnp.zeros((1, 3, 3))
 

@@ -32,6 +32,10 @@ def get_dense_values():
     return sdf_vals
 
 def dense_recon():
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
+    tri_pos.block_until_ready()
+    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    tri_pos = jnp.reshape(tri_pos, (-1,3))
     with Timer("dense (GPU)"):
         tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
         tri_pos.block_until_ready()
@@ -42,6 +46,12 @@ def dense_recon():
 
 
 def hierarchical():
+    tri_pos = hierarchical_marching_cubes(implicit_func, params, \
+        isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
+        batch_process_size = batch_process_size, t=t, warm_up=True)
+    tri_pos.block_until_ready()
+    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    tri_pos = jnp.reshape(tri_pos, (-1,3))
     with Timer("extract mesh"):
         # extract surfaces
         tri_pos = hierarchical_marching_cubes(implicit_func, params, \
@@ -61,33 +71,35 @@ if __name__ == "__main__":
     isovalue = 0
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
-    data_type = 2
+    data_type = 0
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
         # test_model = 'sample_inputs/vorts_relu_5_128.npz'
-        test_model = 'sample_inputs/vorts_sin_5_128.npz'
-        isovalue = 0
+        test_model = 'sample_inputs/vorts_sin_8_32.npz'
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
+        isovalue = 2
     elif data_type == 1:
         # test_model = 'sample_inputs/v02_z_lr_elu_5_128.npz'
         test_model = 'sample_inputs/v02_z_sin_5_128.npz'
         input_file = '../data/99_500_v02.bin'
         bounds = np.array([499, 499, 499])
     elif data_type == 2:
-        # test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
-        test_model = 'sample_inputs/jet_sin_3_128.npz'
+        test_model = 'sample_inputs/jet_cz_elu_5_256.npz'
+        # test_model = 'sample_inputs/jet_sin_3_128.npz'
         input_file = '../data/jet_chi_0054.dat'
         bounds = np.array([479, 339, 119])
     elif data_type == 3:
         # test_model = 'sample_inputs/eth_sin_5_128.npz'
-        test_model = 'sample_inputs/eth_sin_8_64.npz'
+        test_model = 'sample_inputs/eth_sin_8_32.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
+        isovalue = -2.2
     elif data_type == 4:
-        test_model = 'sample_inputs/iso_sin_5_128.npz'
+        test_model = 'sample_inputs/iso_sin_3_128.npz'
         input_file = '../data/Isotropic.nz'
         bounds = np.array([1024,1024,1024])
+        isovalue = 0
     elif data_type == 5:
         test_model = 'sample_inputs/fox.npz'
     elif data_type == 6:
@@ -100,7 +112,11 @@ if __name__ == "__main__":
     # test_model = 'sample_inputs/bunny.npz'
 
     n_mc_depth = 8
-    t = 0.95   # for sine function: 0.99999 will give all voxels
+    # t = 0.68
+    t = 0.95
+    # t = 0.997
+    # t = 0.9999
+    # t = 1
     n_mc_subcell= 3  #larger value may be useful for larger networks
     batch_process_size = 2 ** 12
     evaluate = True
@@ -123,36 +139,36 @@ if __name__ == "__main__":
     upper = jnp.array((data_bound, data_bound, data_bound))
 
     # analyze histogram
-    # center = jnp.array((0,0,0))
-    # scale = jnp.array((1,1,1))
-    # range_lower = center - scale
-    # range_higher = center + scale
-    # vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
-    # from matplotlib import pyplot as plt
-    # from scipy.stats import norm
-    # counts, bins = np.histogram(vals, 100,density=True)
-    # # counts = np.array(counts) / len(vals)
-    # plt.stairs(counts, bins)
-    # x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
-    # y = norm.pdf(x, mu, sigma)
-    # # plt.xlim([x[0],x[-1]])
-    # plt.plot(x,y)
-    # plt.savefig('hist_compare/%s_%s.png' % (data_opts[data_type],mode))
-    
-    # mode = modes[0]
-    # implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
-    # vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
-    # x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
-    # y = norm.pdf(x, mu, sigma)
-    # # plt.xlim([x[0],x[-1]])
-    # plt.plot(x,y)
+    # for xx in np.linspace(-0.7,0.7, 10):
+    #     from matplotlib import pyplot as plt
+    #     from scipy.stats import norm
+    #     plt.clf()
 
-    # plt.savefig('hist_compare/%s.png' % (data_opts[data_type]))
+    #     center = jnp.array((xx,0,0))
+    #     scale = jnp.array((0.3,0.3,0.3))
+    #     range_lower = center - scale
+    #     range_higher = center + scale
 
-    # warm up
-    print("== Warming up")
-    hierarchical()
-    dense_recon()
+    #     mode = modes[2]
+    #     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
+    #     vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
+    #     counts, bins = np.histogram(vals, 100,density=True)
+    #     plt.stairs(counts, bins)
+    #     x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
+    #     y = norm.pdf(x, mu, sigma)
+    #     # plt.xlim([x[0],x[-1]])
+    #     plt.plot(x,y)
+    #     # plt.savefig('hist_compare/%s_%s_x%.2f.png' % (data_opts[data_type],mode,xx))
+        
+    #     mode = modes[0]
+    #     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
+    #     vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
+    #     x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
+    #     y = norm.pdf(x, mu, sigma)
+    #     plt.plot(x,y)
+
+    #     plt.savefig('hist_compare/%s_x%.2f.png' % (data_opts[data_type],xx))
+
 
     # time
     print("== Test")
@@ -163,6 +179,7 @@ if __name__ == "__main__":
         # find active cells (dense and hierarchical)
         with Timer('calculate IoU'):
             vals_np = get_dense_values()
+            print('[min,max]:', vals_np.min(), vals_np.max())
             kd_mask = hierarchical_iso_voxels(implicit_func, params, \
                 isovalue, lower, upper, n_mc_depth, n_mc_subcell, \
                 batch_process_size = batch_process_size, t = t)
@@ -173,22 +190,30 @@ if __name__ == "__main__":
             true_mask = true_mask.reshape((2 ** n_mc_depth, )*3)
             our_mask = true_mask & kd_mask
             iou = (true_mask & our_mask).sum() / (true_mask | our_mask).sum()
+            print()
+            print('[Total true active voxel]', true_mask.sum())
+            print('[Number missed]', (true_mask & ~our_mask).sum())
             print('[IoU]', iou)
 
         # compare tree
-        # with Timer('tree F-score'):
-        #     num_level = (n_mc_depth - n_mc_subcell) * 3
-        #     true_kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, dense=True, vals = vals_np)
-        #     kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, prob_threshold=t, dense=False)
-        #     # only the last level
-        #     if only_leaf == True:
-        #         true_kd_array = true_kd_array[-2 ** num_level:]
-        #         kd_array = kd_array[-2 ** num_level:]
-        #     TP = (true_kd_array & kd_array).sum()
-        #     FP = (~true_kd_array & kd_array).sum()
-        #     FN = (true_kd_array & ~kd_array).sum()
-        #     f_score = TP/(TP+(FP+FN)/2)
-        #     print('[Tree F-score]', f_score)
+        with Timer('tree F-score'):
+            num_level = (n_mc_depth - n_mc_subcell) * 3
+            true_kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, dense=True, vals = vals_np)
+            kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, prob_threshold=t, dense=False)
+            # only the last level
+            if only_leaf == True:
+                true_kd_array = true_kd_array[-2 ** num_level:]
+                kd_array = kd_array[-2 ** num_level:]
+            TP = (true_kd_array & kd_array).sum()
+            FP = (~true_kd_array & kd_array).sum()
+            FN = (true_kd_array & ~kd_array).sum()
+            f_score = TP/(TP+(FP+FN)/2)
+            print()
+            print('[Total Leaf]', 2**num_level)
+            print('[True Number Leaf]', true_kd_array.sum())
+            print('[Pred Number Leaf]', kd_array.sum())
+            print('[Tree F-score]', f_score)
+            print('[Dense F-score]', TP / (TP + len(true_kd_array)/2))
 
 
     # save the binary files

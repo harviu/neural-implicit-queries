@@ -362,19 +362,19 @@ def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_de
 
     return tri_pos_out, n_out_written
 
-def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1.):
+def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False):
 
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
     from utils import Timer
-    with Timer("\tfind nodes"):
+    with Timer("\tfind nodes", warmup=warm_up):
         out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), \
                                                         isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']
         node_upper = out_dict['unknown_node_upper']
 
-    with Timer("\thierarchical mc"):
+    with Timer("\thierarchical mc", warmup=warm_up):
         # fetch the extraction data
         mc_data = extract_cell.get_mc_data()
 
@@ -383,7 +383,6 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
         extract_batch_size = get_next_bucket_size(extract_batch_size)
         N_cell = node_valid.shape[0]
         N_valid = int(jnp.sum(node_valid))
-        print("[\tunknown voxels]", N_valid)
         n_out_written = 0
         tri_pos_out = jnp.zeros((1, 3, 3))
 
