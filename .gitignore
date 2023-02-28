@@ -51,6 +51,7 @@ pyrightconfig.json
 *.app
 
 osc_outputs/
+experiment_logs/
 *.bin
 *.npy
 *.vti
