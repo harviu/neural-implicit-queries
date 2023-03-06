@@ -36,6 +36,12 @@ from evaluation import dense_recon_with_hierarchical_mc
 
 SRC_DIR = os.path.dirname(os.path.realpath(__file__))
 ROOT_DIR = os.path.join(SRC_DIR, "..")
+# 1
+# ASPECT_RATIO = jnp.array([1, 1, 1])
+# ethanediol
+# ASPECT_RATIO = jnp.array([135/135, 117/135, 116/135])
+# combustion
+ASPECT_RATIO = jnp.array([120/480, 340/480, 480/480])
 
 
 def save_render_current_view(args, implicit_func, params, cast_frustum, opts, matcaps, surf_color):
@@ -114,15 +120,24 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     
 
     print("==warm up")
-    tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size)
+    tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size, warm_up=True)
     tri_pos.block_until_ready()
-    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
     with Timer("extract mesh"):
         tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size)
         tri_pos.block_until_ready()
-        tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
+
+    # slicing
+    # tri_pos = jnp.reshape(tri_pos, (-1,3,3))
+    # mask = jnp.argwhere(tri_pos[:,0,0]>0).squeeze()
+    # tri_pos = tri_pos[mask]
+    # tri_pos = jnp.reshape(tri_pos, (-1,3))
+
+    tri_pos, idx = jnp.unique(tri_pos.round(decimals=8), axis=0, return_inverse=True)
+    tri_inds = jnp.reshape(idx, (-1,3))
+
+    tri_pos *= ASPECT_RATIO
     ps.register_surface_mesh("extracted mesh", np.array(tri_pos), np.array(tri_inds), enabled=False)
 
     # Build the tree all over again so we can visualize it
@@ -135,6 +150,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         node_lower = node_lower[node_valid,:]
         node_upper = node_upper[node_valid,:]
         verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
+        verts *= ASPECT_RATIO
         ps_vol = ps.register_volume_mesh("unknown tree nodes", np.array(verts), hexes=np.array(inds), enabled=False)
 
         node_valid = out_dict['interior_node_valid']
@@ -144,6 +160,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         node_upper = node_upper[node_valid,:]
         if node_lower.shape[0] > 0:
             verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
+            verts *= ASPECT_RATIO
             ps_vol = ps.register_volume_mesh("interior tree nodes", np.array(verts), hexes=np.array(inds), enabled=False)
         
         node_valid = out_dict['exterior_node_valid']
@@ -153,6 +170,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         node_upper = node_upper[node_valid,:]
         if node_lower.shape[0] > 0:
             verts, inds = generate_tree_viz_nodes_simple(node_lower, node_upper, shrink_factor=0.05)
+            verts *= ASPECT_RATIO
             ps_vol = ps.register_volume_mesh("exterior tree nodes", np.array(verts), hexes=np.array(inds), enabled=False)
 
     if compute_dense_cost:
@@ -160,13 +178,20 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
         print("==warm up")
         tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
         tri_pos.block_until_ready()
-        tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
         with Timer("dense recon (GPU)"):
             tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
             tri_pos.block_until_ready()
-            tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
             tri_pos = jnp.reshape(tri_pos, (-1,3))
+        # slicing
+        # tri_pos = jnp.reshape(tri_pos, (-1,3,3))
+        # mask = jnp.argwhere(tri_pos[:,0,0]>0).squeeze()
+        # tri_pos = tri_pos[mask]
+        # tri_pos = jnp.reshape(tri_pos, (-1,3))
+
+        tri_pos, idx = jnp.unique(tri_pos.round(decimals=8), axis=0, return_inverse=True)
+        tri_inds = jnp.reshape(idx, (-1,3))
+        tri_pos *= ASPECT_RATIO
         ps.register_surface_mesh("coarse shape preview", np.array(tri_pos), np.array(tri_inds), enabled=False) 
 
 def do_closest_point(opts, func, params, n_closest_point):
@@ -455,7 +480,9 @@ def main():
         delta = 2 / (np.array(grid_res) - 1)
         bbox_min = grid[0,:]
         verts, faces, normals, values = measure.marching_cubes(sdf_vals, level=args.iso, spacing=delta)
-        verts = verts + bbox_min[None,:]
+        asp = np.asarray(ASPECT_RATIO)
+        verts = verts * asp
+        verts = verts + bbox_min[None,:] * asp
     ps.register_surface_mesh("coarse shape preview", verts, faces) 
    
     print("REMEMBER: All routines will be slow on the first invocation due to JAX kernel compilation. Subsequent calls will be fast.")
