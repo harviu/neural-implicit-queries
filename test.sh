@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus-per-node=1
 #SBATCH --account=PAS0027
-#SBATCH --output=osc_outputs/test.%j
+#SBATCH --output=experiment_logs/test.%j
 
 ml miniconda3
 ml cuda/11.6.2
