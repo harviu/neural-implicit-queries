@@ -26,7 +26,7 @@ class ImplicitFunction:
     def __call__(self, params, x):
         raise RuntimeError("ImplicitFunction does not implement a __call__() operator. Subclasses must provide an implementation if is to be used.")
 
-    def classify_box(self, params, box_lower, box_upper, isovalue=0., offset=0., prob_threshold = 0.95, num_grid = 1):
+    def classify_box(self, params, box_lower, box_upper, isovalue=0., offset=0., prob_threshold = 2, num_grid = 1):
         '''
         Determine the sign of the function within a box (reports one of SIGN_UNKNOWN, etc)
         '''
@@ -45,7 +45,7 @@ class ImplicitFunction:
         return self.estimate_general_box_bounds(params, center, vecs)
 
     # General version for non-axis-aligned boxes
-    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 0, num_grid = 1):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 2, num_grid = 1):
         '''
         Determine the sign of the function within a general box (reports one of SIGN_UNKNOWN, etc)
         '''

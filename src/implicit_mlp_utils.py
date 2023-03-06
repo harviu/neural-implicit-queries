@@ -56,6 +56,11 @@ def generate_implicit_from_file(input_path, mode, **kwargs):
         affine_ctx = affine.AffineContext('affine_all')
         return affine.AffineImplicitFunction(implicit_func, affine_ctx), params
     
+    elif mode == 'affine_ua':
+        implicit_func = mlp.func_from_spec(mode='affine')
+        affine_ctx = affine.AffineContext('affine_ua')
+        return affine.AffineImplicitFunction(implicit_func, affine_ctx), params
+    
     elif mode == 'uncertainty_all':
         implicit_func = mlp.func_from_spec(mode='uncertainty')
         affine_ctx = uncertainty.AffineContext('uncertainty_all')

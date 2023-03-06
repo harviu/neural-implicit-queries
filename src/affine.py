@@ -32,7 +32,7 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
     # def classify_box(self, params, box_lower, box_upper):
         # pass
         
-    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 0., num_grid= 1):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 2., num_grid= 1):
 
         d = box_center.shape[-1]
         v = box_vecs.shape[-2]
@@ -48,10 +48,12 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
         # compute the justified prob_threshold
         # t = threshold ** (1/num_grid)
         # z = norm.ppf(0.5 + 0.5 * t)
-        z = threshold
-        may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=z, box_dim=d)
-        # may_lower, may_upper = may_contain_bounds(keep_ctx, output)
-        # must_lower, must_upper = must_contain_bounds(keep_ctx, output)
+        if self.ctx.mode == 'affine_ua':
+            z = threshold
+            may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=z, box_dim=d)
+        else:
+            may_lower, may_upper = may_contain_bounds(keep_ctx, output)
+            # must_lower, must_upper = must_contain_bounds(keep_ctx, output)
 
         # determine the type of the region
         output_type = SIGN_UNKNOWN
@@ -107,7 +109,7 @@ class AffineContext():
     n_append: int = 0
 
     def __post_init__(self):
-        if self.mode not in ['interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all']:
+        if self.mode not in ['interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'affine_ua']:
             raise ValueError("invalid mode")
 
         if self.mode == 'affine_truncate':
@@ -248,7 +250,7 @@ def apply_linear_approx(ctx, input, alpha, beta, delta):
 
     if ctx.mode in ['interval', 'affine_fixed']:
         err = alpha * err + delta
-    elif ctx.mode in ['affine_truncate', 'affine_all']:
+    elif ctx.mode in ['affine_truncate', 'affine_all', 'affine_ua']:
         err = alpha * err
         new_aff = jnp.diag(delta)
         aff = jnp.concatenate((aff, new_aff), axis=0)

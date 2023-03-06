@@ -23,7 +23,7 @@ def construct_uniform_unknown_levelset_tree_iter(
         ib, out_valid, out_lower, out_upper, out_n_valid,
         finished_interior_lower, finished_interior_upper, N_finished_interior,
         finished_exterior_lower, finished_exterior_upper, N_finished_exterior,
-        isovalue=0.,offset=0.,prob_threshold=0.95,num_grid=1
+        isovalue=0.,offset=0.,prob_threshold=2,num_grid=1
         ):
 
     N_in = node_lower.shape[0]
