@@ -46,8 +46,9 @@ class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
 
         # compute relevant bounds
         # compute the justified prob_threshold
-        t = threshold ** (1/num_grid)
-        z = norm.ppf(0.5 + 0.5 * t)
+        # t = threshold ** (1/num_grid)
+        # z = norm.ppf(0.5 + 0.5 * t)
+        z = threshold
         may_lower, may_upper = may_contain_bounds(keep_ctx, output, z=z)
         
         # get the output mean and std
@@ -143,6 +144,7 @@ def coordinates_in_general_box(ctx, center, vecs):
 def may_contain_bounds(ctx, input, z=2):
     mu, vecs, sigma, err = input
     vecs_bound = jnp.sum(jnp.abs(vecs), axis=0) # use exact bounds for the vectors
+    # vecs_bound = jnp.sum(vecs ** 2, axis=0) # use the variance for the vectors
     variance = jnp.sum(sigma ** 2, axis=0) # calculat the variance for uncertainty terms
     if err is not None:
         variance += err * err # add the truncation error

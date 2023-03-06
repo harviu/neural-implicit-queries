@@ -46,8 +46,9 @@ class AffineImplicitFunction(implicit_function.ImplicitFunction):
 
         # compute relevant bounds
         # compute the justified prob_threshold
-        t = threshold ** (1/num_grid)
-        z = norm.ppf(0.5 + 0.5 * t)
+        # t = threshold ** (1/num_grid)
+        # z = norm.ppf(0.5 + 0.5 * t)
+        z = threshold
         may_lower, may_upper = may_contain_bounds_clt(keep_ctx, output, z=z, box_dim=d)
         # may_lower, may_upper = may_contain_bounds(keep_ctx, output)
         # must_lower, must_upper = must_contain_bounds(keep_ctx, output)
