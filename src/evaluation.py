@@ -18,9 +18,16 @@ def compare_mc_clt(func, params, lower, upper, n=1e6, batch_process_size=4096):
         n = int(n)
         key = jax.random.PRNGKey(42)
         key, subkey = jax.random.split(key)
-        rand_n = jax.random.normal(subkey,(n,3))
+        #uniform
+        rand_n = jax.random.uniform(subkey,(n,3))
         delta = upper - lower
         coords = lower[None,:] + delta[None,:] * rand_n
+        #normal
+        # rand_n = jax.random.normal(subkey,(n,3))
+        # center = (upper + lower) / 2
+        # delta = upper - lower
+        # sigma = jnp.sqrt(delta ** 2 / 12)
+        # coords = center + sigma * rand_n
         dense_vals = utils.evaluate_implicit_fun(func, params, coords, batch_process_size)
     # PAF
     with utils.Timer("PAF"):

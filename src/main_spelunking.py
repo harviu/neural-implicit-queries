@@ -37,11 +37,11 @@ from evaluation import dense_recon_with_hierarchical_mc
 SRC_DIR = os.path.dirname(os.path.realpath(__file__))
 ROOT_DIR = os.path.join(SRC_DIR, "..")
 # 1
-# ASPECT_RATIO = jnp.array([1, 1, 1])
+ASPECT_RATIO = jnp.array([1, 1, 1])
 # ethanediol
 # ASPECT_RATIO = jnp.array([135/135, 117/135, 116/135])
 # combustion
-ASPECT_RATIO = jnp.array([120/480, 340/480, 480/480])
+# ASPECT_RATIO = jnp.array([120/480, 340/480, 480/480])
 
 
 def save_render_current_view(args, implicit_func, params, cast_frustum, opts, matcaps, surf_color):
@@ -288,7 +288,7 @@ def main():
     opts['tree_max_depth'] = 12
     opts['tree_split_aff'] = False
     cast_frustum = False
-    t = 0.95 # probability threshold
+    t = 4 # probability threshold
     mode = 'uncertainty_all'
     modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate']
     affine_opts = {}
