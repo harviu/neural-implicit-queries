@@ -9,9 +9,9 @@ import numpy as np
 
 # Imports from this project
 from utils import evaluate_implicit_fun, Timer
-from evaluation import dense_recon_with_hierarchical_mc, hierarchical_iso_voxels, kd_tree_array, iso_voxels, compare_mc_clt
+from evaluation import dense_recon_with_hierarchical_mc, hierarchical_iso_voxels, kd_tree_array, iso_voxels
 from kd_tree import hierarchical_marching_cubes
-import implicit_mlp_utils
+from implicit_mlp_utils import generate_implicit_from_file
 
 def get_dense_values(depth, lower, upper):
     # Construct the regular grid
@@ -32,12 +32,12 @@ def get_dense_values(depth, lower, upper):
     return sdf_vals
 
 def dense_recon():
-    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = True)
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
     tri_pos.block_until_ready()
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
     with Timer("dense (GPU)"):
-        tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = True)
+        tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
         tri_pos.block_until_ready()
         tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
@@ -48,7 +48,7 @@ def dense_recon():
 def hierarchical():
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=True, dry=True)
+        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry)
     tri_pos.block_until_ready()
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
@@ -56,7 +56,7 @@ def hierarchical():
         # extract surfaces
         tri_pos = hierarchical_marching_cubes(implicit_func, params, \
             isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-            batch_process_size = batch_process_size, t=t, warm_up=True, dry=True)
+            batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry)
         tri_pos.block_until_ready()
         tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
         tri_pos = jnp.reshape(tri_pos, (-1,3))
@@ -71,7 +71,10 @@ if __name__ == "__main__":
     isovalue = 0
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
-    data_type = 0
+############################################
+    data_type = 4
+    n_mc_depth = 10
+############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
         # test_model = 'sample_inputs/vorts_relu_5_128.npz'
@@ -112,18 +115,21 @@ if __name__ == "__main__":
 
     # test_model = 'sample_inputs/bunny.npz'
 
-    n_mc_depth = 8
+############################################
+    dry = n_mc_depth > 11
+    # dry = True
+############################################
     n_mc_subcell= 3  #larger value may be useful for larger networks
     batch_process_size = 2 ** 12
     evaluate = True
     only_leaf = True
     # t = 0.68
     # t = 0.95
-    t = 0.997
+    # t = 0.997
     # t = 0.9999
     # t = 1
 
-    modes = ['affine_all', 'affine_truncate','uncertainty_all', 'uncertainty_truncate']
+    modes = ['affine_all', 'affine_ua','uncertainty_all']
     mode = modes[2]
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 64
@@ -139,55 +145,24 @@ if __name__ == "__main__":
     print(f"[Max depth] {n_mc_depth}")
     print(f"[Subcell depth] {n_mc_subcell}")
 
-    # for mode in ['affine_all', 'uncertainty_all']:
+    # for mode in ['affine_all', 'uncertainty_all', 'affine_ua']:
+############################################
     for mode in ['affine_all']:
-        if mode == 'affine_all':
-            t_range = [0.95, 1]
-        else:
-            t_range = [0.68, 0.95, 0.997, 0.9999]
-        t_range = [1]
+############################################
+        t_range = [1,2,3,4,5,6,7,8,9,10]
+        t_range = [0]
+############################################
         for t in t_range:
-            implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
+            implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)
             # print(params.keys())
             print('[Mode]', mode)
             print('[Threshold]', t)
 
-            # analyze histogram
-            # for xx in np.linspace(-0.7,0.7, 10):
-            #     from matplotlib import pyplot as plt
-            #     from scipy.stats import norm
-            #     plt.clf()
-
-            #     center = jnp.array((xx,0,0))
-            #     scale = jnp.array((0.3,0.3,0.3))
-            #     range_lower = center - scale
-            #     range_higher = center + scale
-
-            #     mode = modes[2]
-            #     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
-            #     vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
-            #     counts, bins = np.histogram(vals, 100,density=True)
-            #     plt.stairs(counts, bins)
-            #     x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
-            #     y = norm.pdf(x, mu, sigma)
-            #     # plt.xlim([x[0],x[-1]])
-            #     plt.plot(x,y)
-            #     # plt.savefig('hist_compare/%s_%s_x%.2f.png' % (data_opts[data_type],mode,xx))
-                
-            #     mode = modes[0]
-            #     implicit_func, params = implicit_mlp_utils.generate_implicit_from_file(test_model, mode=mode, **affine_opts)
-            #     vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
-            #     x = np.linspace(mu - sigma * 4, mu+sigma*4, 100)
-            #     y = norm.pdf(x, mu, sigma)
-            #     plt.plot(x,y)
-
-            #     plt.savefig('hist_compare/%s_x%.2f.png' % (data_opts[data_type],xx))
-
 
             # time
-            # print("== Test")
-            # hierarchical()
-            # dense_recon()
+            print("== Test")
+            hierarchical()
+            dense_recon()
 
             if evaluate:
             #     # find active cells (dense and hierarchical)
@@ -242,6 +217,7 @@ if __name__ == "__main__":
                 # compare tree
                 # with Timer('tree F-score'):
                 num_level = (n_mc_depth - n_mc_subcell) * 3
+                vals_np = get_dense_values(depth = n_mc_depth, lower=lower, upper=upper)
                 true_kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, dense=True, vals = vals_np)
                 kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, prob_threshold=t, dense=False)
                 # only the last level
@@ -252,13 +228,15 @@ if __name__ == "__main__":
                 FP = (~true_kd_array & kd_array).sum()
                 FN = (true_kd_array & ~kd_array).sum()
                 f_score = TP/(TP+(FP+FN)/2)
+                ppv = TP/(TP+FP)
                 print()
                 print('[Total Leaf]', 2**num_level)
                 print('[True Number Leaf]', true_kd_array.sum())
                 print('[Pred Number Leaf]', kd_array.sum())
                 print('[Tree F-score]', f_score)
                 # the F-sore if we predict every thing as active cell
-                print('[Dense F-score]', TP / (TP + (len(true_kd_array)-true_kd_array.sum())/2))
+                print('[Dense F-score]', true_kd_array.sum() / (true_kd_array.sum() + (len(true_kd_array)-true_kd_array.sum())/2))
+                print('[PPV]', ppv)
 
                 print('=========================')
 
