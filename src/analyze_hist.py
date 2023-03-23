@@ -6,10 +6,20 @@ import jax
 from evaluation import compare_mc_clt
 from implicit_mlp_utils import generate_implicit_from_file
 
+def kl(counts, bins, mu, sigma):
+    centers = (bins[1:] + bins[:-1])/2
+    diff = (bins[1:] - bins[:-1])
+    px = counts + 1e-20
+    qx = norm.pdf(centers, mu, sigma) + 1e-20
+    kl1 = px * diff * np.log(px/qx)
+    kl1 = kl1.sum()
+    return kl1
+
+
 
 fig, ax_array = plt.subplots(4,5, figsize=(15,8))
 data_opts = ['Vortex', 'Asteroid', 'Combustion', 'Ethanediol','Isotropic','fox', 'hammer','birdcage','bunny']
-for i, data_type in enumerate([0,2,3,4]):
+for i, data_type in enumerate([0,3,2,4]):
     ax_array[i][0].set_ylabel(data_opts[data_type])
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_sin_3_128.npz'
@@ -48,11 +58,17 @@ for i, data_type in enumerate([0,2,3,4]):
     elif data_type == 8:
         test_model = 'sample_inputs/bunny.npz'
 
+    N = 100
+    dkl1 = 0
+    dkl2 = 0
     key = jax.random.PRNGKey(42)
     key, subkey = jax.random.split(key)
     #uniform
-    rand_n = jax.random.uniform(subkey,(5,3))
+    rand_n = jax.random.uniform(subkey,(N,3))
     rand_n = (rand_n - 0.5) * 0.95 * 2
+
+    implicit_func1, params1 = generate_implicit_from_file(test_model, mode="uncertainty_all")
+    implicit_func2, params2 = generate_implicit_from_file(test_model, mode="affine_ua")
 
     center = jnp.array((0,0,0))
     if data_type in [0,3]:
@@ -62,34 +78,33 @@ for i, data_type in enumerate([0,2,3,4]):
     # analyze histogram
     for j, center in enumerate(rand_n):
         Z = 2
-        ax = ax_array[i][j]
+        # ax = ax_array[i][j]
         range_lower = center - scale
         range_higher = center + scale
 
-        mode = "uncertainty_all"
-        implicit_func, params = generate_implicit_from_file(test_model, mode=mode)
-        vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher, n=1e6)
+        vals, mu, sigma = compare_mc_clt(implicit_func1, params1, range_lower, range_higher, n=1e6)
         vals = np.asarray(vals)
         # print('min, max:', vals.min(),vals.max())
         # print('mean:', vals.mean())
         counts, bins = np.histogram(vals, 100,density=True)
-        ax.stairs(counts, bins, label='MC')
+        # ax.stairs(counts, bins, label='MC')
         # plt.hist(vals, 100, density=True)
         x = np.linspace(mu - sigma * (Z+1), mu+sigma*(Z+1), 100)
         y = norm.pdf(x, mu, sigma)
         # plt.xlim([x[0],x[-1]])
-        ax.plot(x,y,label='UP')
+        # ax.plot(x,y,label='UP')
+        dkl1 += kl(counts, bins, mu, sigma)
         
-        mode = "affine_ua"
-        implicit_func, params = generate_implicit_from_file(test_model, mode=mode)
-        vals, mu, sigma = compare_mc_clt(implicit_func, params, range_lower, range_higher)
+        vals, mu, sigma = compare_mc_clt(implicit_func2, params2, range_lower, range_higher)
         x = np.linspace(mu - sigma * Z, mu+sigma*Z, 100)
         y = norm.pdf(x, mu, sigma)
-        ax.plot(x,y,label='RAUA')
+        # ax.plot(x,y,label='RAUA')
+        dkl2 += kl(counts, bins, mu, sigma)
 
         # plt.savefig('hist_compare/{}_{}_{}.png'.format(data_opts[data_type],range_lower,range_higher))
-handles, labels = ax.get_legend_handles_labels()
-fig.legend(handles, labels, loc=(0.875,0.82))
+    print(dkl1/N, dkl2/N)
+# handles, labels = ax.get_legend_handles_labels()
+# fig.legend(handles, labels, loc=(0.875,0.82))
 # fig.tight_layout()
-plt.savefig('hist_compare/dist.png', bbox_inches='tight')
-plt.savefig('hist_compare/dist.pdf', bbox_inches='tight')
+# plt.savefig('hist_compare/dist.png', bbox_inches='tight')
+# plt.savefig('hist_compare/dist.pdf', bbox_inches='tight')

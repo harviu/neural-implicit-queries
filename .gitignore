@@ -60,3 +60,5 @@ train.sh
 *.png
 *.jpg
 *.pdf
+
+test

@@ -72,8 +72,8 @@ if __name__ == "__main__":
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
-    data_type = 4
-    n_mc_depth = 10
+    data_type = 0
+    n_mc_depth = 8
 ############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
@@ -147,7 +147,7 @@ if __name__ == "__main__":
 
     # for mode in ['affine_all', 'uncertainty_all', 'affine_ua']:
 ############################################
-    for mode in ['affine_all']:
+    for mode in ['uncertainty_all', 'affine_all', 'affine_ua']:
 ############################################
         t_range = [1,2,3,4,5,6,7,8,9,10]
         t_range = [0]
