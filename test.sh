@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --time=10:00:00
+#SBATCH --time=5:00:00
 #SBATCH --job-name=test
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --gpus-per-node=1
 #SBATCH --account=PAS0027
 #SBATCH --output=experiment_logs/test.%j
