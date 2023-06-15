@@ -246,6 +246,15 @@ def get_real_bounds_helper(values, all_node_lower, all_node_upper, isovalue = 0,
             node_type[i] = SIGN_UNKNOWN
         
     return node_type, worst_dim
+
+@nb.jit(nopython=True)
+def generate_oct_min_max(data, subcell_level = 3):
+    subcell_side_n = 2 ** subcell_level
+    n, _, _ = data.shape  # n should be 2^k + 1
+    level = int(np.log2(n-1))
+    
+    return level
+
 def kd_tree_array_iter_dense(
         vals, continue_splitting,
         node_valid, node_lower, node_upper,
@@ -448,4 +457,3 @@ def kd_tree_array(func, params, split_depth=None, isovalue=0., offset=0., batch_
 
 
     return kd_array
-

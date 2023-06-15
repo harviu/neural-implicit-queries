@@ -422,3 +422,58 @@ def extract_triangles_from_subcells(func, params, isovalue, mc_data, n_sub_depth
     subcell_tri_is_valid = jnp.reshape(subcell_tri_is_valid, (-1,))
 
     return subcell_tri_pos, subcell_tri_is_valid
+
+
+# 1. make a function to precompute the needed coordinates for hierarchical marching cubes
+# 2. query the function to get the desired values
+# 3. use the following function to make the triangles 
+# The smallest element is a subcell. the first step should already get the values below the subcell level. 
+# However, only the active subcells should be considered for MC
+# Baseline: 
+#       1. densely sample the grid (in batches)
+#       2. build an octree to find the subcells that contain the isovalue
+#       3. use the following function to get the triangles
+
+# Our method:
+#       1. Run the UP to guess the active cells
+#       2. query the network only at the active cells (in small batches)
+#       3. use the following function to get the triangles
+
+@partial(jax.jit, static_argnames=("n_sub_depth"))
+def extract_triangles_from_subcells_with_values(grid_vals, isovalue, mc_data, n_sub_depth, cell_lower, cell_upper):
+    # this is the function to generate the triangles in a subcell with known values in the cell.
+    # Flat_vals matching the n_sub_depth should be provided to the function
+
+    tri_table, edge_verts, vert_logical_coords = mc_data
+
+    # construct the grid of subcells
+    side_n_sub_cells = 2**n_sub_depth
+    side_n_pts = (1+side_n_sub_cells)
+    assert side_n_pts ** 3 == len(grid_vals.flatten())
+    
+    # add the iso-values
+    grid_vals -= isovalue
+
+    # logical grid of subcell inds
+    side_inds = jnp.arange(side_n_sub_cells)
+    grid_inds0, grid_inds1, grid_inds2 = jnp.meshgrid(side_inds, side_inds, side_inds, indexing='ij')
+    grid_inds = jnp.stack((grid_inds0, grid_inds1, grid_inds2), axis=-1)
+    subcell_inds = jnp.reshape(grid_inds, (-1,3))
+
+    # compute the extents of each cell
+    subcell_delta = (cell_upper - cell_lower) / side_n_sub_cells
+    subcell_lower = cell_lower[None,:] + subcell_inds * subcell_delta[None,:]
+    subcell_upper = subcell_lower + subcell_delta[None,:]
+
+    # fetch the function values for each cell
+    subcell_vert_inds = subcell_inds[:,None,:] + vert_logical_coords[None,:,:]
+    subcell_vert_vals = grid_vals.at[subcell_vert_inds[:,:,0], subcell_vert_inds[:,:,1], subcell_vert_inds[:,:,2]].get()
+
+    # apply the extraction routine to each subcell
+    subcell_tri_pos, subcell_tri_is_valid = jax.vmap(partial(extract_triangles_from_cell, None, None, mc_data))(subcell_lower, subcell_upper, subcell_vert_vals)
+
+    # combine all results
+    subcell_tri_pos = jnp.reshape(subcell_tri_pos, (-1,3,3))
+    subcell_tri_is_valid = jnp.reshape(subcell_tri_is_valid, (-1,))
+
+    return subcell_tri_pos, subcell_tri_is_valid
