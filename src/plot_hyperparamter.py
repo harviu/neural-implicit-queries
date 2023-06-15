@@ -4,18 +4,18 @@ import numpy as np
 fig, ax = plt.subplots(1, 2, sharex='all', figsize=(9, 4))
 data_label = ['Vortex', 'Combustion', 'Ethanediol','Isotropic']
 
-# for i,filename in enumerate([
-#     'experiment_logs/hyper_vortex.log',
-#     'experiment_logs/hyper_combustion.log',
-#     'experiment_logs/hyper_ethane.log',
-#     'experiment_logs/hyper_isotropic.log',
-# ]):
 for i,filename in enumerate([
-    'experiment_logs/hyper_raua_vortex.log',
-    'experiment_logs/hyper_raua_combustion.log',
-    'experiment_logs/hyper_raua_ethane.log',
-    'experiment_logs/hyper_raua_isotropic.log',
+    'experiment_logs/hyper_vortex.log',
+    'experiment_logs/hyper_combustion.log',
+    'experiment_logs/hyper_ethane.log',
+    'experiment_logs/hyper_isotropic.log',
 ]):
+# for i,filename in enumerate([
+#     'experiment_logs/hyper_raua_vortex.log',
+#     'experiment_logs/hyper_raua_combustion.log',
+#     'experiment_logs/hyper_raua_ethane.log',
+#     'experiment_logs/hyper_raua_isotropic.log',
+# ]):
     dense_time_sum = 0
     time = []
     iou = []
@@ -81,7 +81,7 @@ for i,filename in enumerate([
 
 for aa in ax:
     aa.legend()
-    aa.set_xlabel('Threshold z')
+    aa.set_xlabel('Threshold')
 
 fig.savefig('hyper.png', bbox_inches='tight')
 fig.savefig('hyper.pdf', bbox_inches='tight')

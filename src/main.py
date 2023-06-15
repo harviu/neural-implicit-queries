@@ -73,7 +73,7 @@ if __name__ == "__main__":
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
     data_type = 0
-    n_mc_depth = 8
+    n_mc_depth = 7
 ############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
@@ -101,6 +101,8 @@ if __name__ == "__main__":
         isovalue = -2.2
     elif data_type == 4:
         test_model = 'sample_inputs/iso_sin_3_128.npz'
+        # test_model = 'sample_inputs/iso_sin_5_128.npz'
+        # test_model = 'sample_inputs/iso_sin_5_256.npz'
         input_file = '../data/Isotropic.nz'
         bounds = np.array([1024,1024,1024])
         isovalue = 0
@@ -116,7 +118,7 @@ if __name__ == "__main__":
     # test_model = 'sample_inputs/bunny.npz'
 
 ############################################
-    dry = n_mc_depth > 11
+    dry = n_mc_depth > 10
     # dry = True
 ############################################
     n_mc_subcell= 3  #larger value may be useful for larger networks
@@ -145,19 +147,23 @@ if __name__ == "__main__":
     print(f"[Max depth] {n_mc_depth}")
     print(f"[Subcell depth] {n_mc_subcell}")
 
+
     # for mode in ['affine_all', 'uncertainty_all', 'affine_ua']:
 ############################################
-    for mode in ['uncertainty_all', 'affine_all', 'affine_ua']:
+    for mode in ['uncertainty_all', 'affine_ua']:
 ############################################
-        t_range = [1,2,3,4,5,6,7,8,9,10]
-        t_range = [0]
+        if mode == 'uncertainty_all':
+            t_range = [5]
+        elif mode == 'affine_ua':
+            t_range = [5]
+        elif mode == 'affine_all':
+            t_range = [None]
 ############################################
         for t in t_range:
             implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)
             # print(params.keys())
             print('[Mode]', mode)
             print('[Threshold]', t)
-
 
             # time
             print("== Test")

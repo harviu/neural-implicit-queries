@@ -130,7 +130,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
 
     # slicing
     # tri_pos = jnp.reshape(tri_pos, (-1,3,3))
-    # mask = jnp.argwhere(tri_pos[:,0,0]>0).squeeze()
+    # mask = jnp.argwhere(tri_pos[:,0,2]<-0).squeeze()
     # tri_pos = tri_pos[mask]
     # tri_pos = jnp.reshape(tri_pos, (-1,3))
 
@@ -185,7 +185,7 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
             tri_pos = jnp.reshape(tri_pos, (-1,3))
         # slicing
         # tri_pos = jnp.reshape(tri_pos, (-1,3,3))
-        # mask = jnp.argwhere(tri_pos[:,0,0]>0).squeeze()
+        # mask = jnp.argwhere(tri_pos[:,0,2]<-0).squeeze()
         # tri_pos = tri_pos[mask]
         # tri_pos = jnp.reshape(tri_pos, (-1,3))
 
@@ -288,9 +288,10 @@ def main():
     opts['tree_max_depth'] = 12
     opts['tree_split_aff'] = False
     cast_frustum = False
-    t = 4 # probability threshold
+    t = 5 # probability threshold
     mode = 'uncertainty_all'
-    modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate']
+    modes = ['affine_all', 'affine_ua', 'uncertainty_all']
+    # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'affine_ua', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 8
     affine_opts['affine_n_append'] = 4
