@@ -165,10 +165,9 @@ def construct_uniform_unknown_levelset_tree(func, params, lower, upper, node_ter
 
         # map over the batches
         out_valid = jnp.zeros((nb, 2*this_b), dtype=bool)
-        out_lower = jnp.zeros((nb, 2*this_b, 3))
-        out_upper = jnp.zeros((nb, 2*this_b, 3))
+        out_lower = jnp.zeros((nb, 2*this_b, d))
+        out_upper = jnp.zeros((nb, 2*this_b, d))
         total_n_valid = 0
-
         # our prob estimation
         num_grid = 8 ** 3 * 2 ** (n_splits - i_split)
         # num_grid = 8 ** 3 * (n_splits - i_split)
