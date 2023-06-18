@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
             # time
             print("== Test")
-            with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
+            with jax.profiler.trace("experiment_logs/jax-trace", create_perfetto_link=True):
                 hierarchical()
             # dense_recon()
 
