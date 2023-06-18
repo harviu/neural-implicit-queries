@@ -451,7 +451,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
     # print("[Total hierarchical time]", 'Elapsed: %.3f seconds' % tall)
     return tri_pos_out
 
-def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry=False):
+def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False):
     tall = 0
     tstart = time.time()
     # need subcell depth because it calculate the extra boundary grids in inference
@@ -469,11 +469,11 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
     tall += time.time() - tstart
     
     # only query the data
-    with Timer("\tdry query time"):
+    with Timer("\tdry query time", warmup=warm_up):
         vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower, node_upper)
         vals.block_until_ready()
     del vals
-    
+
     tstart = time.time()
     # fetch the extraction data
     mc_data = extract_cell.get_mc_data()
@@ -512,8 +512,8 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
     tri_pos = tri_pos_out[:n_out_written,:]
     
     tall += time.time() - tstart
-    
-    print("[Total dense time]", 'Elapsed: %.3f seconds' % tall)
+    if not warm_up:
+        print("[Total dense time]", 'Elapsed: %.3f seconds' % tall)
     return tri_pos
 
 @partial(jax.jit, static_argnames=("func_tuple","viz_nodes"))

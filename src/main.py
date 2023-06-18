@@ -33,12 +33,12 @@ def get_dense_values(depth, lower, upper):
 
 def dense_recon():
     # warm up
-    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up =True, dry = dry)
     tri_pos.block_until_ready()
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
 
-    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry = dry)
     tri_pos.block_until_ready()
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
