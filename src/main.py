@@ -9,8 +9,8 @@ import numpy as np
 
 # Imports from this project
 from utils import evaluate_implicit_fun, Timer
-from evaluation import dense_recon_with_hierarchical_mc, hierarchical_iso_voxels, kd_tree_array, iso_voxels
-from kd_tree import hierarchical_marching_cubes
+from evaluation import hierarchical_iso_voxels, kd_tree_array, iso_voxels
+from kd_tree import hierarchical_marching_cubes, dense_recon_with_hierarchical_mc
 from implicit_mlp_utils import generate_implicit_from_file
 
 def get_dense_values(depth, lower, upper):
@@ -32,34 +32,36 @@ def get_dense_values(depth, lower, upper):
     return sdf_vals
 
 def dense_recon():
+    # warm up
     tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
     tri_pos.block_until_ready()
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
-    with Timer("dense (GPU)"):
-        tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
-        tri_pos.block_until_ready()
-        tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-        tri_pos = jnp.reshape(tri_pos, (-1,3))
+
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, dry = dry)
+    tri_pos.block_until_ready()
+    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    tri_pos = jnp.reshape(tri_pos, (-1,3))
     return None
 
 
 
 def hierarchical():
+    #warm up
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
         batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry)
     tri_pos.block_until_ready()
     tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
     tri_pos = jnp.reshape(tri_pos, (-1,3))
-    with Timer("extract mesh"):
-        # extract surfaces
-        tri_pos = hierarchical_marching_cubes(implicit_func, params, \
-            isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-            batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry)
-        tri_pos.block_until_ready()
-        tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-        tri_pos = jnp.reshape(tri_pos, (-1,3))
+
+    # extract surfaces
+    tri_pos = hierarchical_marching_cubes(implicit_func, params, \
+        isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
+        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry)
+    tri_pos.block_until_ready()
+    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    tri_pos = jnp.reshape(tri_pos, (-1,3))
         
     return None
 
@@ -73,7 +75,7 @@ if __name__ == "__main__":
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
     data_type = 0
-    n_mc_depth = 7
+    n_mc_depth = 8
 ############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
@@ -123,7 +125,7 @@ if __name__ == "__main__":
 ############################################
     n_mc_subcell= 3  #larger value may be useful for larger networks
     batch_process_size = 2 ** 12
-    evaluate = True
+    evaluate = False
     only_leaf = True
     # t = 0.68
     # t = 0.95
@@ -150,7 +152,7 @@ if __name__ == "__main__":
 
     # for mode in ['affine_all', 'uncertainty_all', 'affine_ua']:
 ############################################
-    for mode in ['uncertainty_all', 'affine_ua']:
+    for mode in ['uncertainty_all']:
 ############################################
         if mode == 'uncertainty_all':
             t_range = [5]

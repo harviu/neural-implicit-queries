@@ -30,7 +30,6 @@ import implicit_mlp_utils, extract_cell
 import affine_layers
 import uncertainty_layers
 import slope_interval_layers
-from evaluation import dense_recon_with_hierarchical_mc
 
 # Config
 
