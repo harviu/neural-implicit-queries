@@ -11,6 +11,7 @@ import implicit_function
 from implicit_function import SIGN_UNKNOWN, SIGN_POSITIVE, SIGN_NEGATIVE
 import extract_cell
 import geometry
+import numpy as np
 
 from utils import Timer
 
@@ -410,9 +411,31 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
     tall += time.time() - tstart
 
     # only query the data
-    with Timer("\tdry query time", warmup=warm_up):
-        vals = jax.vmap(partial(query_nodes, func, params, n_subcell_depth))(node_lower, node_upper)
-        vals.block_until_ready()
+    # with Timer("\tdry query time", warmup=warm_up):   
+
+    #     # Extract triangle from the valid nodes (do it in batches in case there are a lot)
+    #     extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_subcell_depth)**3)
+    #     extract_batch_size = get_next_bucket_size(extract_batch_size)
+    #     N_cell = node_valid.shape[0]
+    #     N_valid = int(jnp.sum(node_valid))
+    #     n_out_written = 0
+    #     vals_out = np.zeros((N_cell, (2**n_subcell_depth+1)**3))
+
+    #     init_bucket_size = node_lower.shape[0]
+    #     this_b = min(extract_batch_size, init_bucket_size)
+    #     node_valid = jnp.reshape(node_valid, (-1, this_b))
+    #     node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
+    #     node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
+    #     nb = node_lower.shape[0]
+    #     n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
+    #     for ib in range(n_occ):
+
+    #         # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
+    #         vals = jax.vmap(partial(query_nodes, func, params, n_subcell_depth))(node_lower[ib,...], node_upper[ib,...])
+    #         vals_out[ib*this_b:(ib+1)*this_b] = vals
+    #     # clip the result triangles
+    #     # TODO bucket and mask here? need to if we want this in a JIT loop
+    #     jax.block_until_ready(vals_out)
 
     tstart = time.time()
     with Timer("\thierarchical mc", warmup=warm_up):
@@ -454,8 +477,6 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
     tall += time.time()-tstart
     if not warm_up:
         print("[Total hierarchical time]", 'Elapsed: %.3f seconds' % tall)
-    else: 
-        pass
     return tri_pos_out
 
 def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False):
@@ -475,10 +496,32 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
 
     tall += time.time() - tstart
     
-    # only query the data
-    with Timer("\tdry query time", warmup=warm_up):
-        vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower, node_upper)
-        vals.block_until_ready()
+    ## only query the data
+    with Timer("\tdry query time", warmup=warm_up):   
+
+        # Extract triangle from the valid nodes (do it in batches in case there are a lot)
+        extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_mc_subcell)**3)
+        extract_batch_size = get_next_bucket_size(extract_batch_size)
+        N_cell = node_valid.shape[0]
+        N_valid = int(jnp.sum(node_valid))
+        n_out_written = 0
+        vals_out = np.zeros((N_cell, (2**n_mc_subcell+1)**3))
+
+        init_bucket_size = node_lower.shape[0]
+        this_b = min(extract_batch_size, init_bucket_size)
+        node_valid = jnp.reshape(node_valid, (-1, this_b))
+        node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
+        node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
+        nb = node_lower.shape[0]
+        n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
+        for ib in range(n_occ):
+
+            # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
+            vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower[ib,...], node_upper[ib,...])
+            vals_out[ib*this_b:(ib+1)*this_b] = vals
+        # clip the result triangles
+        # TODO bucket and mask here? need to if we want this in a JIT loop
+        jax.block_until_ready(vals_out)
 
     tstart = time.time()
     # fetch the extraction data

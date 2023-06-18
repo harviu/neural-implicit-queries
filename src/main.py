@@ -34,14 +34,13 @@ def get_dense_values(depth, lower, upper):
 def dense_recon():
     # warm up
     tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up =True, dry = dry)
-    tri_pos.block_until_ready()
-    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    tri_pos = jnp.reshape(tri_pos, (-1,3))
-
+    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    # tri_pos = jnp.reshape(tri_pos, (-1,3))
+    
+    # with jax.profiler.trace("experiment_logs/jax-trace", create_perfetto_link=True):
     tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry = dry)
-    tri_pos.block_until_ready()
-    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    tri_pos = jnp.reshape(tri_pos, (-1,3))
+    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    # tri_pos = jnp.reshape(tri_pos, (-1,3))
     return None
 
 
@@ -51,17 +50,16 @@ def hierarchical():
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
         batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry)
-    tri_pos.block_until_ready()
-    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    tri_pos = jnp.reshape(tri_pos, (-1,3))
+    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    # tri_pos = jnp.reshape(tri_pos, (-1,3))
 
     # extract surfaces
+    # with jax.profiler.trace("experiment_logs/jax-trace", create_perfetto_link=True):
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
         batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry)
-    tri_pos.block_until_ready()
-    tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    tri_pos = jnp.reshape(tri_pos, (-1,3))
+    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
+    # tri_pos = jnp.reshape(tri_pos, (-1,3))
         
     return None
 
@@ -169,8 +167,7 @@ if __name__ == "__main__":
 
             # time
             print("== Test")
-            with jax.profiler.trace("experiment_logs/jax-trace", create_perfetto_link=True):
-                hierarchical()
+            hierarchical()
             # dense_recon()
 
             if evaluate:
