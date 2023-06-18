@@ -75,7 +75,7 @@ if __name__ == "__main__":
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
     data_type = 0
-    n_mc_depth = 8
+    n_mc_depth = 7
 ############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
@@ -169,8 +169,9 @@ if __name__ == "__main__":
 
             # time
             print("== Test")
-            hierarchical()
-            dense_recon()
+            with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
+                hierarchical()
+            # dense_recon()
 
             if evaluate:
             #     # find active cells (dense and hierarchical)
