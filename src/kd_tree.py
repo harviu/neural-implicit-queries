@@ -396,15 +396,17 @@ def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_de
     return tri_pos_out, n_out_written
 
 def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False, dry = False):
-
+    tall = 0
     # Build a tree over the isosurface
     # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
+    tstart = time.time()
     with Timer("\tfind nodes", warmup=warm_up):
         out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), \
                                                         isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']
         node_upper = out_dict['unknown_node_upper']
+    tall += time.time() - tstart
 
     # only query the data
     with Timer("\tdry query time", warmup=warm_up):
@@ -412,6 +414,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
         vals.block_until_ready()
     del vals
 
+    tstart = time.time()
     with Timer("\thierarchical mc", warmup=warm_up):
         # fetch the extraction data
         mc_data = extract_cell.get_mc_data()
@@ -447,8 +450,11 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
         # clip the result triangles
         # TODO bucket and mask here? need to if we want this in a JIT loop
         tri_pos_out = tri_pos_out[:n_out_written,:]
-    # tall += time.time()-tstart
-    # print("[Total hierarchical time]", 'Elapsed: %.3f seconds' % tall)
+    tall += time.time()-tstart
+    if not warm_up:
+        print("[Total hierarchical time]", 'Elapsed: %.3f seconds' % tall)
+    else: 
+        pass
     return tri_pos_out
 
 def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False):
