@@ -479,7 +479,6 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
     with Timer("\tdry query time", warmup=warm_up):
         vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower, node_upper)
         vals.block_until_ready()
-    del vals
 
     tstart = time.time()
     # fetch the extraction data
