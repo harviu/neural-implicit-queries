@@ -403,6 +403,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
     with Timer("\tfind nodes", warmup=warm_up):
         out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), \
                                                         isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
+        jax.block_until_ready(out_dict)
         node_valid = out_dict['unknown_node_valid']
         node_lower = out_dict['unknown_node_lower']
         node_upper = out_dict['unknown_node_upper']
@@ -412,7 +413,6 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
     with Timer("\tdry query time", warmup=warm_up):
         vals = jax.vmap(partial(query_nodes, func, params, n_subcell_depth))(node_lower, node_upper)
         vals.block_until_ready()
-    del vals
 
     tstart = time.time()
     with Timer("\thierarchical mc", warmup=warm_up):
@@ -450,6 +450,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
         # clip the result triangles
         # TODO bucket and mask here? need to if we want this in a JIT loop
         tri_pos_out = tri_pos_out[:n_out_written,:]
+        tri_pos_out.block_until_ready()
     tall += time.time()-tstart
     if not warm_up:
         print("[Total hierarchical time]", 'Elapsed: %.3f seconds' % tall)
@@ -516,6 +517,7 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
     # clip the result triangles
     # TODO bucket and mask here? need to if we want this in a JIT loop
     tri_pos = tri_pos_out[:n_out_written,:]
+    tri_pos.block_until_ready()
     
     tall += time.time() - tstart
     if not warm_up:
