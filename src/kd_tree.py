@@ -393,10 +393,14 @@ def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_de
         out_inds += n_out_written
         tri_pos_out = tri_pos_out.at[out_inds,:,:].set(tri_verts, mode='drop')
         n_out_written += jnp.sum(tri_valid)
-
+    else:
+        out_inds = utils.enumerate_mask(tri_valid, fill_value=tri_pos_out.shape[0])
+        out_inds += n_out_written
+        tri_pos_out = tri_pos_out.at[out_inds,:,:].set(tri_verts, mode='drop')
+        n_out_written = 0
     return tri_pos_out, n_out_written
 
-def hierarchical_query(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False, dry = False):
+def hierarchical_query(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False):
     with Timer("hierarchical without mc", warmup=warm_up):
         # Build a tree over the isosurface
         # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
@@ -431,9 +435,7 @@ def hierarchical_query(func, params, isovalue, lower, upper, depth, n_subcell_de
                 # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
                 vals = jax.vmap(partial(query_nodes, func, params, n_subcell_depth))(node_lower[ib,...], node_upper[ib,...])
                 # vals_out[ib*this_b:(ib+1)*this_b] = vals
-            # clip the result triangles
-            # TODO bucket and mask here? need to if we want this in a JIT loop
-            jax.block_until_ready(vals_out)
+            vals.block_until_ready()
     return None
 
 def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False, dry = False):
@@ -473,20 +475,17 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
                 # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
                 # expand the output array only lazily as needed
-                if not dry:
-                    while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
-                        tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
-                    
-                    tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
-                else:
-                    hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue, dry)
+                while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
+                    tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
+                
+                tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue, dry)
             # clip the result triangles
             # TODO bucket and mask here? need to if we want this in a JIT loop
             tri_pos_out = tri_pos_out[:n_out_written,:]
             tri_pos_out.block_until_ready()
     return tri_pos_out
 
-def dense_recon(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False):
+def dense_recon(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False):
     with Timer("dense without MC", warmup=warm_up):
         # need subcell depth because it calculate the extra boundary grids in inference
         side_n_cells = 2**(n_mc_depth- n_mc_subcell)
@@ -509,7 +508,6 @@ def dense_recon(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_
         N_cell = node_valid.shape[0]
         N_valid = int(jnp.sum(node_valid))
         n_out_written = 0
-        vals_out = np.zeros((N_cell, (2**n_mc_subcell+1)**3))
 
         init_bucket_size = node_lower.shape[0]
         this_b = min(extract_batch_size, init_bucket_size)
@@ -523,9 +521,7 @@ def dense_recon(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_
             # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
             vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower[ib,...], node_upper[ib,...])
             # vals_out[ib*this_b:(ib+1)*this_b] = vals
-        # clip the result triangles
-        # TODO bucket and mask here? need to if we want this in a JIT loop
-        jax.block_until_ready(vals_out)
+        vals.block_until_ready()
     return None
 
 def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False):
@@ -567,13 +563,10 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
             # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
             # expand the output array only lazily as needed
-            if not dry:
-                while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
-                    tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
-                
-                tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(implicit_func, params, mc_data, n_mc_subcell, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
-            else:
-                hierarchical_marching_cubes_extract_iter(implicit_func, params, mc_data, n_mc_subcell, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue, dry=True)
+            while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
+                tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
+            
+            tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(implicit_func, params, mc_data, n_mc_subcell, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue, dry)
         # clip the result triangles
         # TODO bucket and mask here? need to if we want this in a JIT loop
         tri_pos = tri_pos_out[:n_out_written,:]
