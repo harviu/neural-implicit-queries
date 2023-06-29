@@ -376,8 +376,8 @@ def query_nodes(func, params, n_sub_depth, cell_lower, cell_upper, batch_eval_si
         flat_vals = jax.vmap(partial(func,params))(flat_coords)
     return flat_vals
 
-@partial(jax.jit, static_argnames=("func","n_subcell_depth","dry"), donate_argnums=(7,))
-def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid, node_lower, node_upper, tri_pos_out, n_out_written, isovalue, dry = False):
+@partial(jax.jit, static_argnames=("func","n_subcell_depth"), donate_argnums=(7,))
+def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid, node_lower, node_upper, tri_pos_out, n_out_written, isovalue):
 
     # run the extraction routine
     tri_verts, tri_valid = jax.vmap(partial(extract_cell.extract_triangles_from_subcells, func, params, isovalue, mc_data, n_subcell_depth))(node_lower, node_upper) 
@@ -388,57 +388,13 @@ def hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_de
     tri_valid = jnp.reshape(tri_valid, (-1,))
 
     # write the result
-    if not dry:
-        out_inds = utils.enumerate_mask(tri_valid, fill_value=tri_pos_out.shape[0])
-        out_inds += n_out_written
-        tri_pos_out = tri_pos_out.at[out_inds,:,:].set(tri_verts, mode='drop')
-        n_out_written += jnp.sum(tri_valid)
-    else:
-        out_inds = utils.enumerate_mask(tri_valid, fill_value=tri_pos_out.shape[0])
-        out_inds += n_out_written
-        tri_pos_out = tri_pos_out.at[out_inds,:,:].set(tri_verts, mode='drop')
-        n_out_written = 0
+    out_inds = utils.enumerate_mask(tri_valid, fill_value=tri_pos_out.shape[0])
+    out_inds += n_out_written
+    tri_pos_out = tri_pos_out.at[out_inds,:,:].set(tri_verts, mode='drop')
+    n_out_written += jnp.sum(tri_valid)
     return tri_pos_out, n_out_written
 
-def hierarchical_query(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False):
-    with Timer("hierarchical without mc", warmup=warm_up):
-        # Build a tree over the isosurface
-        # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
-        with Timer("\tfind nodes", warmup=warm_up):
-            out_dict = construct_uniform_unknown_levelset_tree(func, params, lower, upper, split_depth=3*(depth-n_subcell_depth), \
-                                                            isovalue=isovalue, batch_process_size=batch_process_size, prob_threshold=t)
-            jax.block_until_ready(out_dict)
-            node_valid = out_dict['unknown_node_valid']
-            node_lower = out_dict['unknown_node_lower']
-            node_upper = out_dict['unknown_node_upper']
-
-        # only query the data
-        with Timer("\tquery only", warmup=warm_up):   
-
-            # Extract triangle from the valid nodes (do it in batches in case there are a lot)
-            extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_subcell_depth)**3)
-            extract_batch_size = get_next_bucket_size(extract_batch_size)
-            N_cell = node_valid.shape[0]
-            N_valid = int(jnp.sum(node_valid))
-            n_out_written = 0
-            vals_out = np.zeros((N_cell, (2**n_subcell_depth+1)**3))
-
-            init_bucket_size = node_lower.shape[0]
-            this_b = min(extract_batch_size, init_bucket_size)
-            node_valid = jnp.reshape(node_valid, (-1, this_b))
-            node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
-            node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
-            nb = node_lower.shape[0]
-            n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
-            for ib in range(n_occ):
-
-                # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
-                vals = jax.vmap(partial(query_nodes, func, params, n_subcell_depth))(node_lower[ib,...], node_upper[ib,...])
-                # vals_out[ib*this_b:(ib+1)*this_b] = vals
-            vals.block_until_ready()
-    return None
-
-def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False, dry = False):
+def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_subcell_depth=2, extract_batch_max_tri_out=2 ** 20, batch_process_size = 2 ** 20, t = 1., warm_up = False, dry = False, mc_time = False):
     with Timer("hierarchical with mc",warmup=warm_up):
         # Build a tree over the isosurface
         # By definition returned nodes are all SIGN_UNKNOWN, and all the same size
@@ -475,56 +431,37 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
                 # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
                 # expand the output array only lazily as needed
-                while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
-                    tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
-                
-                tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue, dry)
+                if dry:
+                    while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
+                        tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
+                    
+                    tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(func, params, mc_data, n_subcell_depth, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
+                else:
+                    tri_pos_out, tri_valid = jax.vmap(partial(extract_cell.extract_triangles_from_subcells, func, params, isovalue, mc_data, n_subcell_depth))(node_lower[ib,...], node_upper[ib,...]) 
+                    n_out_written = jnp.sum(tri_valid)
             # clip the result triangles
             # TODO bucket and mask here? need to if we want this in a JIT loop
             tri_pos_out = tri_pos_out[:n_out_written,:]
             tri_pos_out.block_until_ready()
+
+    if mc_time:
+        t_start = time.time()
+        for ib in range(n_occ):
+            vals = jax.vmap(partial(query_nodes, func, params, n_subcell_depth))(node_lower[ib,...], node_upper[ib,...])
+        vals.block_until_ready()
+        t_query = time.time() - t_start
+        
+        t_start = time.time()
+        for ib in range(n_occ):
+            tri_verts, tri_valid = jax.vmap(partial(extract_cell.extract_triangles_from_subcells, func, params, isovalue, mc_data, n_subcell_depth))(node_lower[ib,...], node_upper[ib,...]) 
+        tri_verts.block_until_ready()
+        t_query_mc = time.time() - t_start
+        t_mc = t_query_mc - t_query
+        if not warm_up:
+            print("MC time is: %.3f" % t_mc)
     return tri_pos_out
 
-def dense_recon(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False):
-    with Timer("dense without MC", warmup=warm_up):
-        # need subcell depth because it calculate the extra boundary grids in inference
-        side_n_cells = 2**(n_mc_depth- n_mc_subcell)
-        side_n_pts = (1+side_n_cells)
-        side_coords0 = jnp.linspace(-1,1, num=side_n_pts)
-        side_coords1 = jnp.linspace(-1,1, num=side_n_pts)
-        side_coords2 = jnp.linspace(-1,1, num=side_n_pts)
-        grid_coords0, grid_coords1, grid_coords2 = jnp.meshgrid(side_coords0[0:-1], side_coords1[0:-1], side_coords2[0:-1], indexing='ij')
-        node_lower = jnp.stack((grid_coords0.flatten(), grid_coords1.flatten(), grid_coords2.flatten()), axis=-1)
-        grid_coords0, grid_coords1, grid_coords2 = jnp.meshgrid(side_coords0[1:], side_coords1[1:], side_coords2[1:], indexing='ij')
-        node_upper = jnp.stack((grid_coords0.flatten(), grid_coords1.flatten(), grid_coords2.flatten()), axis=-1)
-        node_valid = jnp.ones((node_lower.shape[0]),jnp.bool_)
-        
-        ## only query the data
-        extract_batch_max_tri_out = 2**20
-
-        # Extract triangle from the valid nodes (do it in batches in case there are a lot)
-        extract_batch_size = extract_batch_max_tri_out // (5 * (2**n_mc_subcell)**3)
-        extract_batch_size = get_next_bucket_size(extract_batch_size)
-        N_cell = node_valid.shape[0]
-        N_valid = int(jnp.sum(node_valid))
-        n_out_written = 0
-
-        init_bucket_size = node_lower.shape[0]
-        this_b = min(extract_batch_size, init_bucket_size)
-        node_valid = jnp.reshape(node_valid, (-1, this_b))
-        node_lower = jnp.reshape(node_lower, (-1, this_b, 3))
-        node_upper = jnp.reshape(node_upper, (-1, this_b, 3))
-        nb = node_lower.shape[0]
-        n_occ = int(math.ceil(N_valid/ this_b)) # only the batches which are occupied (since valid nodes are densely packed at the start)
-        for ib in range(n_occ):
-
-            # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
-            vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower[ib,...], node_upper[ib,...])
-            # vals_out[ib*this_b:(ib+1)*this_b] = vals
-        vals.block_until_ready()
-    return None
-
-def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False):
+def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry=False, mc_time = False):
     with Timer("dense with MC", warmup=warm_up):
         # need subcell depth because it calculate the extra boundary grids in inference
         side_n_cells = 2**(n_mc_depth- n_mc_subcell)
@@ -563,14 +500,33 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
             # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
             # expand the output array only lazily as needed
-            while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
-                tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
-            
-            tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(implicit_func, params, mc_data, n_mc_subcell, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue, dry)
+            if dry:
+                while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
+                    tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
+                
+                tri_pos_out, n_out_written = hierarchical_marching_cubes_extract_iter(implicit_func, params, mc_data, n_mc_subcell, node_valid[ib,...], node_lower[ib,...], node_upper[ib,...], tri_pos_out, n_out_written, isovalue)
+            else:
+                tri_pos_out, tri_valid = jax.vmap(partial(extract_cell.extract_triangles_from_subcells, implicit_func, params, isovalue, mc_data, n_mc_subcell))(node_lower[ib,...], node_upper[ib,...]) 
+                n_out_written = jnp.sum(tri_valid)
         # clip the result triangles
         # TODO bucket and mask here? need to if we want this in a JIT loop
         tri_pos = tri_pos_out[:n_out_written,:]
         tri_pos.block_until_ready()
+    if mc_time:
+        t_start = time.time()
+        for ib in range(n_occ):
+            vals = jax.vmap(partial(query_nodes, implicit_func, params, n_mc_subcell))(node_lower[ib,...], node_upper[ib,...])
+        vals.block_until_ready()
+        t_query = time.time() - t_start
+        
+        t_start = time.time()
+        for ib in range(n_occ):
+            tri_verts, tri_valid = jax.vmap(partial(extract_cell.extract_triangles_from_subcells, implicit_func, params, isovalue, mc_data, n_mc_subcell))(node_lower[ib,...], node_upper[ib,...]) 
+        tri_verts.block_until_ready()
+        t_query_mc = time.time() - t_start
+        t_mc = t_query_mc - t_query
+        if not warm_up:
+            print("Dense MC time is: %.3f" % t_mc)
     return tri_pos
 
 @partial(jax.jit, static_argnames=("func_tuple","viz_nodes"))
