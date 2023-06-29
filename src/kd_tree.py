@@ -431,7 +431,7 @@ def hierarchical_marching_cubes(func, params, isovalue, lower, upper, depth, n_s
                 # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
                 # expand the output array only lazily as needed
-                if dry:
+                if not dry:
                     while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
                         tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
                     
@@ -500,7 +500,7 @@ def dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth
             # print(f"Extract iter {ib} / {n_occ}. max_tri_round: {max_tri_round} n_out_written: {n_out_written}")
 
             # expand the output array only lazily as needed
-            if dry:
+            if not dry:
                 while(tri_pos_out.shape[0] - n_out_written < max_tri_round):
                     tri_pos_out = utils.resize_array_axis(tri_pos_out, 2*tri_pos_out.shape[0])
                 
