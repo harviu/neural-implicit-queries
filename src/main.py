@@ -1,5 +1,6 @@
 import igl # work around some env/packaging problems by loading this first
 
+import time
 import jax
 import jax.numpy as jnp
 
@@ -31,37 +32,23 @@ def get_dense_values(depth, lower, upper):
     # verts = verts + bbox_min[None,:]
     return sdf_vals
 
-def dense_recon():
-    # warm up
-    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up =True, dry = dry)
-    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    # tri_pos = jnp.reshape(tri_pos, (-1,3))
-    
-    # with jax.profiler.trace("experiment_logs/jax-trace", create_perfetto_link=True):
-    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry = dry)
-    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    # tri_pos = jnp.reshape(tri_pos, (-1,3))
+def test_dense():
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=True, dry = dry, mc_time = True)
+    tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell, warm_up=False, dry = dry , mc_time = True)
     return None
 
 
+def test_hierarchical():
 
-def hierarchical():
-    #warm up
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry)
-    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    # tri_pos = jnp.reshape(tri_pos, (-1,3))
-
-    # extract surfaces
-    # with jax.profiler.trace("experiment_logs/jax-trace", create_perfetto_link=True):
+        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry, mc_time=True)
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry)
-    # tri_inds = jnp.reshape(jnp.arange(3*tri_pos.shape[0]), (-1,3))
-    # tri_pos = jnp.reshape(tri_pos, (-1,3))
-        
+        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry, mc_time = True)
     return None
+
+
 
 if __name__ == "__main__":
     # jax.config.update('jax_disable_jit', True)
@@ -72,8 +59,8 @@ if __name__ == "__main__":
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
-    data_type = 0
-    n_mc_depth = 7
+    data_type = 4
+    n_mc_depth = 10
 ############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_5_128_l2.npz'
@@ -119,7 +106,6 @@ if __name__ == "__main__":
 
 ############################################
     dry = n_mc_depth > 10
-    # dry = True
 ############################################
     n_mc_subcell= 3  #larger value may be useful for larger networks
     batch_process_size = 2 ** 12
@@ -131,8 +117,7 @@ if __name__ == "__main__":
     # t = 0.9999
     # t = 1
 
-    modes = ['affine_all', 'affine_ua','uncertainty_all']
-    mode = modes[2]
+    modes = ['uncertainty_all', 'affine_ua', 'affine_all', 'affine_fixed', 'affine_truncate', 'affine_append']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 64
     affine_opts['affine_n_append'] = 4
@@ -146,29 +131,35 @@ if __name__ == "__main__":
     print('[Data]', data_opts[data_type])
     print(f"[Max depth] {n_mc_depth}")
     print(f"[Subcell depth] {n_mc_subcell}")
+    print('[Dry Run]', dry)
 
 
-    # for mode in ['affine_all', 'uncertainty_all', 'affine_ua']:
 ############################################
-    for mode in ['uncertainty_all']:
+    for i, mode in enumerate(modes):
 ############################################
         if mode == 'uncertainty_all':
             t_range = [5]
         elif mode == 'affine_ua':
             t_range = [5]
-        elif mode == 'affine_all':
+        else:
             t_range = [None]
 ############################################
         for t in t_range:
             implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)
-            # print(params.keys())
+            
+            # Dense reconstruction time test
+            if i == 0:
+                print()
+                print("[Dense]")
+                test_dense()
+            
+            print()
             print('[Mode]', mode)
             print('[Threshold]', t)
 
             # time
             print("== Test")
-            hierarchical()
-            # dense_recon()
+            test_hierarchical()
 
             if evaluate:
             #     # find active cells (dense and hierarchical)
