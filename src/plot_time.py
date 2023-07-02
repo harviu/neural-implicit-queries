@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt    
 import numpy as np
 
-fig, ax = plt.subplots(2, 2, figsize=(9, 8))
+fig, ax = plt.subplots(2, 2, figsize=(10, 8))
 data_label = ['Vortex', 'Ethanedioal', 'Combustion','Isotropic']
 data_name = ['vort', 'eth', 'comb' ,'iso']
 
@@ -9,9 +9,9 @@ for i in range(4):
     data = data_name[i]
     filename = 'experiment_logs/time_%s.log' % data
     modes = ['dense']
-    modes_label = ['DENSE', 'UP', 'RAUA', 'ALL', 'FIXED', 'TRUN', 'APPEN']
+    modes_label = ['DENSE', 'UP', 'RAUA', 'FULL', 'FIXED', 'TRUN', 'APPE']
     times = {
-        'RA': [],
+        'ACP': [],
         'NIR': [],
         'MC': [],
     }
@@ -26,7 +26,7 @@ for i in range(4):
                 dense_total_time = float(line[25:-8])
             elif 'Dense MC time is:' in line:
                 dense_mc_time = float(line[18:])
-                times['RA'].append(0) 
+                times['ACP'].append(0) 
                 times['NIR'].append(dense_total_time - dense_mc_time) 
                 times['MC'].append(dense_mc_time)
             elif '== Test' in line:
@@ -39,7 +39,7 @@ for i in range(4):
                         total_time = float(line[32:-8])
                     elif 'MC time is:' in line:
                         mc_time = float(line[12:])
-                        times['RA'].append(find_node_time) 
+                        times['ACP'].append(find_node_time) 
                         times['NIR'].append(query_mc_time - mc_time) 
                         times['MC'].append(mc_time)
                         break
