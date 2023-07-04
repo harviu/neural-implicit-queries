@@ -60,8 +60,8 @@ if __name__ == "__main__":
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
-    data_type = 4
-    n_mc_depth = 10
+    data_type = 3
+    n_mc_depth = 8
 ############################################
     if data_type == 0:
         test_model = 'sample_inputs/vorts_sin_4_32.npz'
@@ -81,14 +81,16 @@ if __name__ == "__main__":
         bounds = np.array([479, 339, 119])
     elif data_type == 3:
         # test_model = 'sample_inputs/eth_sin_5_128.npz'
-        test_model = 'sample_inputs/eth_sin_8_32.npz'
+        # test_model = 'sample_inputs/eth_sin_3_128.npz'
+        # test_model = 'sample_inputs/eth_sin_8_32.npz'
+        test_model = 'sample_inputs/eth_sin_8_64.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
         isovalue = -2.2
     elif data_type == 4:
         # test_model = 'sample_inputs/iso_sin_3_128.npz'
-        test_model = 'sample_inputs/iso_sin_5_128.npz'
-        # test_model = 'sample_inputs/iso_sin_5_256.npz'
+        # test_model = 'sample_inputs/iso_sin_5_128.npz'
+        test_model = 'sample_inputs/iso_sin_5_256.npz'
         input_file = '../data/Isotropic.nz'
         bounds = np.array([1024,1024,1024])
         isovalue = 0
@@ -110,10 +112,10 @@ if __name__ == "__main__":
     batch_process_size = 2 ** 12
 
     modes = ['uncertainty_all', 'uncertainty_truncate', 'affine_ua', 'affine_all', 'affine_fixed', 'affine_truncate', 'affine_append']
-    mode = modes[1]
+    mode = modes[0]
     affine_opts = {}
-    affine_opts['affine_n_truncate'] = 1024
-    affine_opts['affine_n_append'] = 512
+    affine_opts['affine_n_truncate'] = 256
+    affine_opts['affine_n_append'] = 4
     affine_opts['sdf_lipschitz'] = 1.
     truncate_policies = ['absolute', 'relative']
     affine_opts['affine_truncate_policy'] = truncate_policies[0]
@@ -143,94 +145,108 @@ if __name__ == "__main__":
     #                    'sample_inputs/vorts_sin_8_512.npz',
     # ]:
 ############################################
-
-    implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)
-    # Dense reconstruction time test
-
-    print()
-    print("[Dense]")
-    test_dense()
-    print()
-    print("[Hierarchy]")
-    test_hierarchical()
-
-    #     # find active cells (dense and hierarchical)
-    #     # with Timer('calculate IoU'):
-    MAXDEPTH = 10
-    N_intersection = 0
-    N_union = 0
-    N_missed = 0
-    N_total = 0
-    if n_mc_depth <= MAXDEPTH:
-        vals_np = get_dense_values(depth = n_mc_depth, lower=lower, upper=upper)
-        kd_mask = hierarchical_iso_voxels(implicit_func, params, \
-            isovalue, lower, upper, n_mc_depth, n_mc_subcell, \
-            batch_process_size = batch_process_size, t = t)
-        # correctness
-        iso = iso_voxels(np.asarray(vals_np), isovalue)
-        true_mask = np.zeros(((2 ** n_mc_depth)**3,),np.bool_)
-        true_mask[iso] = True
-        true_mask = true_mask.reshape((2 ** n_mc_depth, )*3)
-        our_mask = true_mask & kd_mask
-        N_intersection = (true_mask & our_mask).sum() 
-        N_union = (true_mask | our_mask).sum()
-        N_missed = (true_mask & ~our_mask).sum()
-        N_total = true_mask.sum()
-        # print('[min,max]:', vals_np.min(), vals_np.max())
-    else:
-        n_subdivision = n_mc_depth - MAXDEPTH + 1
-        for i in range(n_subdivision):
-            for j in range(n_subdivision):
-                for k in range(n_subdivision):
-                    delta = (upper - lower) / n_subdivision
-                    curr_lower = lower + delta * np.array([i,j,k])
-                    curr_upper = lower + delta * (np.array([i,j,k]) + 1)
-                    vals_np = get_dense_values(MAXDEPTH, curr_lower, curr_upper)
-                    kd_mask = hierarchical_iso_voxels(implicit_func, params, \
-                        isovalue, curr_lower, curr_upper, MAXDEPTH, n_mc_subcell, \
-                        batch_process_size = batch_process_size, t = t)
-                    iso = iso_voxels(np.asarray(vals_np), isovalue)
-                    true_mask = np.zeros(((2 ** MAXDEPTH)**3,),np.bool_)
-                    true_mask[iso] = True
-                    true_mask = true_mask.reshape((2 ** MAXDEPTH, )*3)
-                    our_mask = true_mask & kd_mask
-                    N_intersection += (true_mask & our_mask).sum()
-                    N_union += (true_mask | our_mask).sum()
-                    N_missed += (true_mask & ~our_mask).sum()
-                    N_total += true_mask.sum()
-    print()
-    print('[Total true active voxel]', N_total)
-    print('[Number missed]', N_missed)
-    print('[IoU]', N_intersection/N_union)
-
-    # compare tree
-    # with Timer('tree F-score'):
-    # num_level = (n_mc_depth - n_mc_subcell) * 3
-    # vals_np = get_dense_values(depth = n_mc_depth, lower=lower, upper=upper)
-    # true_kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, dense=True, vals = vals_np)
-    # kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, prob_threshold=t, dense=False)
-    # true_kd_array = true_kd_array[-2 ** num_level:]
-    # kd_array = kd_array[-2 ** num_level:]
-    # TP = (true_kd_array & kd_array).sum()
-    # FP = (~true_kd_array & kd_array).sum()
-    # FN = (true_kd_array & ~kd_array).sum()
-    # f_score = TP/(TP+(FP+FN)/2)
-    # ppv = TP/(TP+FP)
-    # print()
-    # print('[Total Leaf]', 2**num_level)
-    # print('[True Number Leaf]', true_kd_array.sum())
-    # print('[Pred Number Leaf]', kd_array.sum())
-    # print('[Tree F-score]', f_score)
-    # # the F-sore if we predict every thing as active cell
-    # print('[Dense F-score]', true_kd_array.sum() / (true_kd_array.sum() + (len(true_kd_array)-true_kd_array.sum())/2))
-    # print('[PPV]', ppv)
-
-    print('=========================')
+    for test_model in [
+        'sample_inputs/eth_sin_4_32.npz',
+        'sample_inputs/eth_sin_4_45.npz',
+        'sample_inputs/eth_sin_4_64.npz',
+        'sample_inputs/eth_sin_4_90.npz',
+        'sample_inputs/eth_sin_4_128.npz',
+        'sample_inputs/eth_sin_4_181.npz',
+        'sample_inputs/eth_sin_4_256.npz',
+        'sample_inputs/eth_sin_4_362.npz',
+        'sample_inputs/eth_sin_4_512.npz',
+        'sample_inputs/eth_sin_4_724.npz',
+        'sample_inputs/eth_sin_4_1024.npz',
+    ]:
 
 
-    # save the binary files
-    # data = load_data(data_type, input_file)
-    # mean = data.mean()
-    # std = data.std()
-    # vals_np = (vals_np * std) + mean
-    # save_vtk(vals_np.shape, bounds / vals_np.shape, vals_np, 'test.vti')
+        implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)
+        # Dense reconstruction time test
+
+        print()
+        print("[Dense]")
+        test_dense()
+        print()
+        print("[Hierarchy]")
+        test_hierarchical()
+
+        #     # find active cells (dense and hierarchical)
+        #     # with Timer('calculate IoU'):
+        MAXDEPTH = 10
+        N_intersection = 0
+        N_union = 0
+        N_missed = 0
+        N_total = 0
+        if n_mc_depth <= MAXDEPTH:
+            vals_np = get_dense_values(depth = n_mc_depth, lower=lower, upper=upper)
+            kd_mask = hierarchical_iso_voxels(implicit_func, params, \
+                isovalue, lower, upper, n_mc_depth, n_mc_subcell, \
+                batch_process_size = batch_process_size, t = t)
+            # correctness
+            iso = iso_voxels(np.asarray(vals_np), isovalue)
+            true_mask = np.zeros(((2 ** n_mc_depth)**3,),np.bool_)
+            true_mask[iso] = True
+            true_mask = true_mask.reshape((2 ** n_mc_depth, )*3)
+            our_mask = true_mask & kd_mask
+            N_intersection = (true_mask & our_mask).sum() 
+            N_union = (true_mask | our_mask).sum()
+            N_missed = (true_mask & ~our_mask).sum()
+            N_total = true_mask.sum()
+            # print('[min,max]:', vals_np.min(), vals_np.max())
+        else:
+            n_subdivision = n_mc_depth - MAXDEPTH + 1
+            for i in range(n_subdivision):
+                for j in range(n_subdivision):
+                    for k in range(n_subdivision):
+                        delta = (upper - lower) / n_subdivision
+                        curr_lower = lower + delta * np.array([i,j,k])
+                        curr_upper = lower + delta * (np.array([i,j,k]) + 1)
+                        vals_np = get_dense_values(MAXDEPTH, curr_lower, curr_upper)
+                        kd_mask = hierarchical_iso_voxels(implicit_func, params, \
+                            isovalue, curr_lower, curr_upper, MAXDEPTH, n_mc_subcell, \
+                            batch_process_size = batch_process_size, t = t)
+                        iso = iso_voxels(np.asarray(vals_np), isovalue)
+                        true_mask = np.zeros(((2 ** MAXDEPTH)**3,),np.bool_)
+                        true_mask[iso] = True
+                        true_mask = true_mask.reshape((2 ** MAXDEPTH, )*3)
+                        our_mask = true_mask & kd_mask
+                        N_intersection += (true_mask & our_mask).sum()
+                        N_union += (true_mask | our_mask).sum()
+                        N_missed += (true_mask & ~our_mask).sum()
+                        N_total += true_mask.sum()
+        print()
+        print('[Total true active voxel]', N_total)
+        print('[Number missed]', N_missed)
+        print('[IoU]', N_intersection/N_union)
+
+        # compare tree
+        # with Timer('tree F-score'):
+        # num_level = (n_mc_depth - n_mc_subcell) * 3
+        # vals_np = get_dense_values(depth = n_mc_depth, lower=lower, upper=upper)
+        # true_kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, dense=True, vals = vals_np)
+        # kd_array = kd_tree_array(implicit_func, params, num_level, isovalue, prob_threshold=t, dense=False)
+        # true_kd_array = true_kd_array[-2 ** num_level:]
+        # kd_array = kd_array[-2 ** num_level:]
+        # TP = (true_kd_array & kd_array).sum()
+        # FP = (~true_kd_array & kd_array).sum()
+        # FN = (true_kd_array & ~kd_array).sum()
+        # f_score = TP/(TP+(FP+FN)/2)
+        # ppv = TP/(TP+FP)
+        # print()
+        # print('[Total Leaf]', 2**num_level)
+        # print('[True Number Leaf]', true_kd_array.sum())
+        # print('[Pred Number Leaf]', kd_array.sum())
+        # print('[Tree F-score]', f_score)
+        # # the F-sore if we predict every thing as active cell
+        # print('[Dense F-score]', true_kd_array.sum() / (true_kd_array.sum() + (len(true_kd_array)-true_kd_array.sum())/2))
+        # print('[PPV]', ppv)
+
+        print('=========================')
+
+
+        # save the binary files
+        # data = load_data(data_type, input_file)
+        # mean = data.mean()
+        # std = data.std()
+        # vals_np = (vals_np * std) + mean
+        # save_vtk(vals_np.shape, bounds / vals_np.shape, vals_np, 'test.vti')

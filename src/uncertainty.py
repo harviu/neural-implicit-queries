@@ -185,9 +185,9 @@ def truncate_affine(ctx, input):
     aff_keep = sigma[:n_keep,:]
 
     # for all the entries we aren't keeping, add their contribution to the interval error
-    aff_drop = sigma[n_keep:,:]
-    err = err * err + jnp.sum((aff_drop * aff_drop), axis=0)
-    err = jnp.sqrt(err)
+    # aff_drop = sigma[n_keep:,:]
+    # err = err * err + jnp.sum((aff_drop * aff_drop), axis=0)
+    # err = jnp.sqrt(err)
 
     return mu, vecs, aff_keep, err
 
