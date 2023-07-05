@@ -47,6 +47,7 @@ for i in range(4):
             line = f.readline()
     bottom = np.zeros(len(modes))
     axx = ax[i//2][i%2]
+    axx.grid(axis = 'y')
     for boolean, time in times.items():
         p = axx.bar(modes_label, time, 0.5, label=boolean, bottom=bottom)
         bottom += time

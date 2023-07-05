@@ -56,7 +56,7 @@ if __name__ == "__main__":
     # jax.config.update("jax_enable_x64", True)
     data_bound = 1
     isovalue = 0
-    mc_time = False
+    mc_time = True
 
     data_opts = ['vorts', 'asteroid', 'combustion', 'ethanediol','isotropic','fox', 'hammer','birdcage','bunny']
 ############################################
@@ -154,9 +154,9 @@ if __name__ == "__main__":
         'sample_inputs/eth_sin_4_181.npz',
         'sample_inputs/eth_sin_4_256.npz',
         'sample_inputs/eth_sin_4_362.npz',
-        'sample_inputs/eth_sin_4_512.npz',
-        'sample_inputs/eth_sin_4_724.npz',
-        'sample_inputs/eth_sin_4_1024.npz',
+        # 'sample_inputs/eth_sin_4_512.npz',
+        # 'sample_inputs/eth_sin_4_724.npz',
+        # 'sample_inputs/eth_sin_4_1024.npz',
     ]:
 
 
@@ -209,7 +209,7 @@ if __name__ == "__main__":
                         true_mask = np.zeros(((2 ** MAXDEPTH)**3,),np.bool_)
                         true_mask[iso] = True
                         true_mask = true_mask.reshape((2 ** MAXDEPTH, )*3)
-                        our_mask = true_mask & kd_mask
+                        our_mask = true_mask & kd_mask # we are already calculating the true mask
                         N_intersection += (true_mask & our_mask).sum()
                         N_union += (true_mask | our_mask).sum()
                         N_missed += (true_mask & ~our_mask).sum()
