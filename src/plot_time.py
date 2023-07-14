@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 fig, ax = plt.subplots(2, 2, figsize=(10, 8))
-data_label = ['Vortex', 'Ethanedioal', 'Combustion','Isotropic']
+data_label = ['Vortex', 'Ethanediol', 'Combustion','Isotropic']
 data_name = ['vort', 'eth', 'comb' ,'iso']
 
 for i in range(4):

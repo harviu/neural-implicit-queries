@@ -24,7 +24,7 @@ for i, acc in enumerate(y_up_acc):
 # '''.format(y_up[i], y_dense[i], round(acc* 100, 4) ), ha='left')
     ax[0].text(i-width/2, y_up[i] + 50, "{:.0f}s".format(round(y_up[i], 0)), ha = 'center')
     ax[0].text(i+width/2, y_dense[i] + 50, "{:.0f}s".format(round(y_dense[i], 0)), ha = 'center')
-    ax[0].text(i, -1030, "Missed:\n{:.6f}%".format(round(1-y_up_acc[i],6)), ha = 'center')
+    # ax[0].text(i, -1030, "Missed:\n{:.6f}%".format(round(1-y_up_acc[i],6)), ha = 'center')
 ax[0].bar(x-width/2, y_up, width, label = 'UP')
 ax[0].bar(x+width/2, y_dense, width, label = 'Dense')
 ax[0].set_ylim(0, 4500)
@@ -37,9 +37,14 @@ formatter = ticker.FuncFormatter(lambda x, pos: '{:.0f}k'.format(x * 1e-3))
 # Apply the formatter to the y-axis tick labels
 ax[0].yaxis.set_major_formatter(formatter)
 ax[0].set_ylabel("Time (in thousand seconds)")
-ax[0].set_title("Target resolution")
-# ax2 = ax[0].twinx()
-# ax2.plot(x, y_up_acc)
+ax[0].set_xlabel("Target resolution")
+
+y_missed = [1-x for x in y_up_acc]
+ax2 = ax[0].twinx()
+ax2.plot(x, y_missed, marker ='*', color='gray', label='Error')
+ax2.set_ylabel('Missed Cells (%)') 
+ax2.set_ylim(1e-6, 1e-5)
+ax2.legend(loc='center left')
 
 x = np.arange(8)
 
@@ -87,9 +92,11 @@ x_label = ["%.0f" % x for x in x_label]
 ax[1].set_xticklabels(x_label)
 ax[1].grid(axis = 'y')
 
-# axx1 = ax[1].twinx()  # instantiate a second axes that shares the same x-axis
-# axx1.set_ylabel('Missed Cells Percentage')  # we already handled the x-label with ax1
-# axx1.plot(x, missed)
+axx1 = ax[1].twinx()  # instantiate a second axes that shares the same x-axis
+axx1.set_ylabel('Missed Cells (%)')  # we already handled the x-label with ax1
+axx1.plot(x, missed, marker ='*', color='gray',label='Error')
+axx1.legend(loc='center left')
+# axx1.set_ylim(0,1e-3)
 
 dense_query_time = [x-y for x, y in zip(dense_total_time, dense_mc_time)]
 
@@ -101,14 +108,16 @@ ax[1].bar(x+width/2, dense_total_time, width, label = 'Dense', bottom=0) #, colo
 # ax[1].bar(x-width/2, node_time, width, label = 'UP APC', bottom=0, color='#1167b1')
 # ax[1].bar(x-width/2, np.array(mc_time)+np.array(query_time), width, label = 'UP NIR', bottom=node_time, color='#00b4d8')
 # ax[1].bar(x-width/2, mc_time, width, label = 'UP MC', bottom=np.array(node_time)+np.array(query_time), color='#187bcd')
-ax[1].text(-1, -0.3, "Missed:", ha = 'center', rotation=65)
-for i,a in enumerate(acc):
-    ax[1].text(i, -0.35, "{:.5f}%".format(round(1-a,5)), ha = 'center', rotation=65)
+# ax[1].text(-1, -0.3, "Missed:", ha = 'center', rotation=65)
+# for i,a in enumerate(acc):
+#     ax[1].text(i, -0.35, "{:.5f}%".format(round(1-a,5)), ha = 'center', rotation=65)
 
 ax[1].set_ylabel("Time (seconds)")
-ax[1].set_title("# parameters (k)")
+ax[1].set_xlabel("# parameters (k)")
 
 ax[1].legend()
+
+fig.tight_layout()
 
 fig.savefig('scal.pdf', bbox_inches='tight') 
 fig.savefig('scal.png', bbox_inches='tight') 

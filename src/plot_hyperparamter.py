@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt    
 import numpy as np
 
-fig, ax = plt.subplots(1, 2, sharex='all', figsize=(9, 4))
+fig, ax = plt.subplots(1, 2, sharex='all', figsize=(7, 4))
 data_label = ['Vortex', 'Combustion', 'Ethanediol','Isotropic']
 
 for i,filename in enumerate([
@@ -81,8 +81,10 @@ for i,filename in enumerate([
 
 for aa in ax:
     aa.legend()
+    aa.grid(axis='y')
     aa.set_xlabel('Threshold')
 
+fig.tight_layout()
 fig.savefig('hyper.png', bbox_inches='tight')
 fig.savefig('hyper.pdf', bbox_inches='tight')
 

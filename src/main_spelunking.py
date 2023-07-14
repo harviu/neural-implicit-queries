@@ -118,10 +118,10 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
     print("Subcell_depth", n_mc_subcell)
     
 
-    print("==warm up")
-    tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size, warm_up=True)
-    tri_pos.block_until_ready()
-    tri_pos = jnp.reshape(tri_pos, (-1,3))
+    # print("==warm up")
+    # tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size, warm_up=True)
+    # tri_pos.block_until_ready()
+    # tri_pos = jnp.reshape(tri_pos, (-1,3))
     with Timer("extract mesh"):
         tri_pos = hierarchical_marching_cubes(implicit_func, params, isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, t = t, batch_process_size=batch_size)
         tri_pos.block_until_ready()
@@ -174,10 +174,10 @@ def do_hierarchical_mc(opts, implicit_func, params, isovalue, n_mc_depth, do_viz
 
     if compute_dense_cost:
         # Construct the regular grid
-        print("==warm up")
-        tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
-        tri_pos.block_until_ready()
-        tri_pos = jnp.reshape(tri_pos, (-1,3))
+        # print("==warm up")
+        # tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
+        # tri_pos.block_until_ready()
+        # tri_pos = jnp.reshape(tri_pos, (-1,3))
         with Timer("dense recon (GPU)"):
             tri_pos = dense_recon_with_hierarchical_mc(implicit_func, params, isovalue, n_mc_depth, n_mc_subcell)
             tri_pos.block_until_ready()
