@@ -56,10 +56,10 @@ experiment_logs/
 *.npy
 *.vti
 osc_init.sh
-train.sh
 *.png
 *.jpg
 *.pdf
+figures/
 
 test
 hist_compare/

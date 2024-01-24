@@ -12,7 +12,7 @@ for i in range(4):
     modes_label = ['DENSE', 'UP', 'RAUA', 'FULL', 'FIXED', 'TRUN', 'APPE']
     times = {
         'ACP': [],
-        'NIR': [],
+        'INR': [],
         'MC': [],
     }
 
@@ -27,7 +27,7 @@ for i in range(4):
             elif 'Dense MC time is:' in line:
                 dense_mc_time = float(line[18:])
                 times['ACP'].append(0) 
-                times['NIR'].append(dense_total_time - dense_mc_time) 
+                times['INR'].append(dense_total_time - dense_mc_time) 
                 times['MC'].append(dense_mc_time)
             elif '== Test' in line:
                 while True:
@@ -40,7 +40,7 @@ for i in range(4):
                     elif 'MC time is:' in line:
                         mc_time = float(line[12:])
                         times['ACP'].append(find_node_time) 
-                        times['NIR'].append(query_mc_time - mc_time) 
+                        times['INR'].append(query_mc_time - mc_time) 
                         times['MC'].append(mc_time)
                         break
                     line = f.readline()

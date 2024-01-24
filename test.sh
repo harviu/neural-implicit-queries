@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=5:00:00
+#SBATCH --time=1:00:00
 #SBATCH --job-name=test
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -12,4 +12,4 @@ ml miniconda3
 ml cuda/11.6.2
 source activate implicit-env
 
-python src/main.py 
+python src/main.py -t 0 -d 8
