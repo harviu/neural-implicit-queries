@@ -45,9 +45,14 @@ ASPECT_RATIO = jnp.array([1, 1, 1])
 
 def save_render_current_view(args, implicit_func, params, cast_frustum, opts, matcaps, surf_color):
 
-    root = ps.get_camera_world_position()
-    look, up, left = ps.get_camera_frame()
-    fov_deg = ps.get_field_of_view()
+    paramsCam = ps.get_view_camera_parameters()
+    up = paramsCam.get_up_dir()
+    look = paramsCam.get_look_dir()
+    right = paramsCam.get_right_dir()
+    root = paramsCam.get_position()
+    left = - right
+    fov_deg = paramsCam.get_fov_vertical_deg()
+
     res = args.res // opts['res_scale']
 
     surf_color = tuple(surf_color)
@@ -249,7 +254,7 @@ def main():
     # Build arguments
     parser.add_argument("input", type=str)
     
-    parser.add_argument("--res", type=int, default=1024)
+    parser.add_argument("--res", type=int, default=512)
 
     parser.add_argument("--iso", type=float, default=0)
     
@@ -286,11 +291,12 @@ def main():
     opts['res_scale'] = 1
     opts['tree_max_depth'] = 12
     opts['tree_split_aff'] = False
+    opts['iso'] = args.iso
     cast_frustum = False
     t = 5 # probability threshold
     mode = 'uncertainty_all'
-    modes = ['affine_all', 'affine_ua', 'uncertainty_all']
-    # modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'affine_ua', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate']
+    # modes = ['affine_all', 'affine_ua', 'uncertainty_all']
+    modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'affine_ua', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate', 'uncertainty_fixed']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 8
     affine_opts['affine_n_append'] = 4
@@ -354,6 +360,7 @@ def main():
 
 
             _, t = psim.InputFloat("threshold", t)
+            opts['threshold'] =t
 
             psim.PopItemWidth()
             psim.TreePop()
