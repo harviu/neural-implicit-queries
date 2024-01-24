@@ -66,6 +66,11 @@ def generate_implicit_from_file(input_path, mode, **kwargs):
         affine_ctx = uncertainty.AffineContext('uncertainty_all')
         return uncertainty.UncertaintyImplicitFunction(implicit_func, affine_ctx), params
     
+    elif mode == 'uncertainty_fixed':
+        implicit_func = mlp.func_from_spec(mode='uncertainty')
+        affine_ctx = uncertainty.AffineContext('uncertainty_fixed')
+        return uncertainty.UncertaintyImplicitFunction(implicit_func, affine_ctx), params
+    
     elif mode == 'uncertainty_truncate':
         implicit_func = mlp.func_from_spec(mode='uncertainty')
         affine_ctx = uncertainty.AffineContext('uncertainty_truncate', 

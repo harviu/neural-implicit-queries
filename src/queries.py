@@ -55,7 +55,7 @@ def cast_rays_iter(funcs_tuple, params_tuple, n_substeps, curr_roots, curr_dirs,
             pos_start = root + t * dir
             half_vec = 0.5 * step_size * dir
             pos_mid = pos_start + half_vec
-            box_type = func.classify_general_box(params, pos_mid, half_vec[None,:])
+            box_type = func.classify_general_box(params, pos_mid, half_vec[None,:], threshold=opts['threshold'], isovalue=opts['iso'])
 
             # test if the step is safe
             can_step = jnp.logical_and(
@@ -222,7 +222,7 @@ def cast_rays_frustum_iter(
         for func, params in zip(funcs_tuple, params_tuple):
 
             # Perform the actual interval test
-            box_type = func.classify_general_box(params, center_mid, box_vecs) 
+            box_type = func.classify_general_box(params, center_mid, box_vecs, threshold=opts['threshold'], isovalue=opts['iso']) 
             
             # test if the step is safe
             can_step = jnp.logical_and(

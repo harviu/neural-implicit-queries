@@ -32,7 +32,7 @@ class UncertaintyImplicitFunction(implicit_function.ImplicitFunction):
     # def classify_box(self, params, box_lower, box_upper):
         # pass
         
-    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 0., num_grid= 1):
+    def classify_general_box(self, params, box_center, box_vecs, isovalue=0., offset=0., threshold = 2., num_grid= 1):
 
         d = box_center.shape[-1]
         v = box_vecs.shape[-2]
@@ -96,7 +96,7 @@ class AffineContext():
     n_append: int = 0
 
     def __post_init__(self):
-        if self.mode not in ['uncertainty_truncate', 'uncertainty_all']:
+        if self.mode not in ['uncertainty_truncate', 'uncertainty_all', 'uncertainty_fixed']:
             raise ValueError("invalid mode")
 
         if self.mode == 'uncertainty_truncate':
@@ -185,9 +185,9 @@ def truncate_affine(ctx, input):
     aff_keep = sigma[:n_keep,:]
 
     # for all the entries we aren't keeping, add their contribution to the interval error
-    # aff_drop = sigma[n_keep:,:]
-    # err = err * err + jnp.sum((aff_drop * aff_drop), axis=0)
-    # err = jnp.sqrt(err)
+    aff_drop = sigma[n_keep:,:]
+    err = err * err + jnp.sum((aff_drop * aff_drop), axis=0)
+    err = jnp.sqrt(err)
 
     return mu, vecs, aff_keep, err
 
@@ -205,10 +205,14 @@ def apply_linear_approx(ctx, input, alpha, beta, delta):
     # approximation routines are generating positive delta.
     # At most, we defending against floating point error here.
     delta = jnp.abs(delta)
-
-    new_sigma = jnp.diag(delta)
-    sigma = jnp.concatenate((sigma, new_sigma), axis=0)
-    return truncate_affine(ctx, (mu, vecs, sigma, err))
+    
+    if ctx.mode in ['uncertainty_fixed']:
+        err = jnp.sqrt(err * err + delta * delta)
+    elif ctx.mode in ['uncertainty_truncate', 'uncertainty_all']:
+        new_sigma = jnp.diag(delta)
+        sigma = jnp.concatenate((sigma, new_sigma), axis=0)
+        mu, vecs, sigma, err = truncate_affine(ctx, (mu, vecs, sigma, err))
+    return mu, vecs, sigma, err
 
 # Convert to/from the affine representation from an ordinary value representing a scalar
 def from_scalar(x):

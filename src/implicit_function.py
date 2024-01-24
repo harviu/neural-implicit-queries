@@ -26,7 +26,7 @@ class ImplicitFunction:
     def __call__(self, params, x):
         raise RuntimeError("ImplicitFunction does not implement a __call__() operator. Subclasses must provide an implementation if is to be used.")
 
-    def classify_box(self, params, box_lower, box_upper, isovalue=0., offset=0., prob_threshold = 2, num_grid = 1):
+    def classify_box(self, params, box_lower, box_upper, isovalue=0., offset=0., prob_threshold = 5, num_grid = 1):
         '''
         Determine the sign of the function within a box (reports one of SIGN_UNKNOWN, etc)
         '''
