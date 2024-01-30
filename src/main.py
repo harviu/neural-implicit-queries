@@ -60,10 +60,10 @@ def test_hierarchical():
 
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry, mc_time=True)
+        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry, mc_time=False)
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry, mc_time = True)
+        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry, mc_time = False)
     return None
 
 
@@ -90,15 +90,15 @@ if __name__ == "__main__":
 ############################################
     if data_type == 0:
         # test_model = 'sample_inputs/vorts_elu_8_32.npz'
-        test_model = 'sample_inputs/vorts_relu_8_32.npz'
-        # test_model = 'sample_inputs/vorts_sin_8_32.npz'
+        # test_model = 'sample_inputs/vorts_relu_8_32.npz'
+        test_model = 'sample_inputs/vorts_sin_8_32.npz'
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
         isovalue = 2
     elif data_type == 1:
-        test_model = 'sample_inputs/v02_relu_8_32.npz'
+        # test_model = 'sample_inputs/v02_relu_8_32.npz'
         # test_model = 'sample_inputs/v02_elu_8_32.npz'
-        # test_model = 'sample_inputs/v02_sin_8_32.npz'
+        test_model = 'sample_inputs/v02_sin_8_32.npz'
         input_file = '../data/99_500_v02.bin'
         bounds = np.array([499, 499, 499])
     elif data_type == 2:
@@ -108,8 +108,8 @@ if __name__ == "__main__":
         bounds = np.array([479, 339, 119])
     elif data_type == 3:
         # test_model = 'sample_inputs/eth_elu_8_32.npz'
-        test_model = 'sample_inputs/eth_relu_8_32.npz'
-        # test_model = 'sample_inputs/eth_sin_8_32.npz'
+        # test_model = 'sample_inputs/eth_relu_8_32.npz'
+        test_model = 'sample_inputs/eth_sin_8_32.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
         isovalue = -2.2
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # t = 1
 
     # modes = ['uncertainty_all', 'affine_ua', 'affine_all', 'affine_fixed', 'affine_truncate', 'affine_append']
-    modes = ['uncertainty_all', 'affine_all']
+    modes = ['mc', 'uncertainty_all']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 64
     affine_opts['affine_n_append'] = 4
@@ -169,7 +169,7 @@ if __name__ == "__main__":
         elif mode == 'affine_ua':
             t_range = [5]
         else:
-            t_range = [None]
+            t_range = [5]
 ############################################
         for t in t_range:
             implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)

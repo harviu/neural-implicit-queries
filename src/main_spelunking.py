@@ -296,7 +296,7 @@ def main():
     t = 5 # probability threshold
     mode = 'uncertainty_all'
     # modes = ['affine_all', 'affine_ua', 'uncertainty_all']
-    modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'affine_ua', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate', 'uncertainty_fixed']
+    modes = ['sdf', 'interval', 'affine_fixed', 'affine_truncate', 'affine_append', 'affine_all', 'affine_ua', 'slope_interval', 'uncertainty_all', 'uncertainty_truncate', 'uncertainty_fixed', 'mc']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 8
     affine_opts['affine_n_append'] = 4

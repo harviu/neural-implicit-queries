@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 
 import utils
-import mlp, sdf, affine, slope_interval, uncertainty
+import mlp, sdf, affine, slope_interval, uncertainty, mc
 
 
 def generate_implicit_from_file(input_path, mode, **kwargs):
@@ -28,6 +28,9 @@ def generate_implicit_from_file(input_path, mode, **kwargs):
         else:
             lipschitz_bound = 1.
         return sdf.WeakSDFImplicitFunction(implicit_func, lipschitz_bound=lipschitz_bound), params
+    elif mode =='mc':
+        implicit_func = mlp.func_from_spec(mode='default')
+        return mc.MCImplicitFunction(implicit_func), params
     
     elif mode == 'interval':
         implicit_func = mlp.func_from_spec(mode='affine')
