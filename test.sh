@@ -13,3 +13,6 @@ ml cuda/11.6.2
 source activate implicit-env
 
 python src/main.py -t 0 -d 8
+python src/main.py -t 3 -d 8
+python src/main.py -t 2 -d 9
+python src/main.py -t 4 -d 10

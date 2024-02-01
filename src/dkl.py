@@ -15,35 +15,25 @@ def kl(counts, bins, mu, sigma):
     kl1 = kl1.sum()
     return kl1
 
-def draw(mu, sigma, Z, ax, label):
-    x = np.linspace(mu - sigma * (Z+1), mu+sigma*(Z+1), 100)
-    y = norm.pdf(x, mu, sigma)
-    ax.plot(x,y,label=label)
 
+key = jax.random.PRNGKey(42)
 
-fig, ax_array = plt.subplots(4,3, figsize=(7.5,8))
 data_opts = ['Vortex', 'Asteroid', 'Combustion', 'Ethanediol','Isotropic','fox', 'hammer','birdcage','bunny']
-for i, data_type in enumerate([0, 3, 2, 4]):
-    ax_array[i][0].set_ylabel(data_opts[data_type])
+for i, data_type in enumerate([0]):
     if data_type == 0:
-        # test_model = 'sample_inputs/vorts_sin_3_128.npz'
         test_model = 'sample_inputs/vorts_sin_8_32.npz'
         input_file = '../data/vorts01.data'
         bounds = np.array([127, 127, 127])
         isovalue = 2
     elif data_type == 1:
         test_model = 'sample_inputs/v02_relu_8_32.npz'
-        # test_model = 'sample_inputs/v02_elu_8_32.npz'
-        # test_model = 'sample_inputs/v02_sin_8_32.npz'
         input_file = '../data/99_500_v02.bin'
         bounds = np.array([499, 499, 499])
     elif data_type == 2:
-        # test_model = 'sample_inputs/jet_cz_elu_5_128.npz'
         test_model = 'sample_inputs/jet_sin_8_32.npz'
         input_file = '../data/jet_chi_0054.dat'
         bounds = np.array([479, 339, 119])
     elif data_type == 3:
-        # test_model = 'sample_inputs/eth_sin_5_128.npz'
         test_model = 'sample_inputs/eth_sin_8_32.npz'
         input_file = '../data/ethanediol.bin'
         bounds = np.array([115, 116, 134])
@@ -62,56 +52,60 @@ for i, data_type in enumerate([0, 3, 2, 4]):
     elif data_type == 8:
         test_model = 'sample_inputs/bunny.npz'
 
-    N = 3
-    key = jax.random.PRNGKey(42)
-    key, subkey = jax.random.split(key)
+    N = 4000
+    valid = 0
+    dkl1 = 0
+    dkl2 = 0
+    dkl3 = 0
 
     implicit_func1, params1 = generate_implicit_from_file(test_model, mode="uncertainty_all")
     implicit_func2, params2 = generate_implicit_from_file(test_model, mode="affine_ua")
 
     #uniform
-    # rand_n = jax.random.uniform(subkey,(N,3))
-    # rand_n = (rand_n - 0.5) * 2 #* 0.95
+    key, subkey = jax.random.split(key)
+    rand_n = jax.random.uniform(subkey,(N,3))
+    center = (rand_n - 0.5) * 2
     # if data_type in [0,3]:
     #     scale = jnp.array((0.05,0.05,0.05))
     # else:
     #     scale = jnp.array((0.02,0.02,0.02))
-    # scale = jnp.array((20) * 3)
-    x_label= ['Small', 'Median', 'Large']
-    scale_size = [0.02, 0.1, 1]
-    center = jnp.array((0.5) * 3)
+    key, subkey = jax.random.split(key)
+    scale = jax.random.uniform(subkey,(N,1))
+    lower = center - scale  
+    upper = center + scale
     # analyze histogram
-    for j, scale_s in enumerate(scale_size):
-        ax_array[-1][j].set_xlabel('Test')
-        scale = jnp.array((scale_s,) * 3)
-        range_lower = center - scale
-        range_higher = center + scale
+    for j in range(N):
+        range_lower = lower[j]
+        range_higher = upper[j]
+
+        if range_lower.min() < -1:
+            continue
+        if range_higher.max() > 1:
+            continue
+
+        valid += 1
 
         #MC
         vals, mu, sigma = compare_mc_clt(implicit_func1, params1, range_lower, range_higher, n=1e6)
         vals = np.asarray(vals)
+        # vals = vals * 100
+        # mu *= 100
+        # sigma *= 100
         counts, bins = np.histogram(vals, 100,density=True)
+
         #UP
+        dkl1 += kl(counts, bins, mu, sigma)
+        
         #RAUA
-        samples, mu_raua, sigma_raua = compare_mc_clt(implicit_func2, params2, range_lower, range_higher, n=100)
+        samples, mu_raua, sigma_raua = compare_mc_clt(implicit_func2, params2, range_lower, range_higher, n=10)
+        # samples = samples * 100
+        # mu_raua *= 100
+        # sigma_raua *= 100
+        dkl2 += kl(counts, bins, mu_raua, sigma_raua)
 
         # sample 100 values and fit Gaussian using MLE
         mu_sample, sigma_sample = norm.fit(samples)
+        dkl3 += kl(counts, bins, mu_sample, sigma_sample)
 
-        ax = ax_array[i][j]
-        ax.stairs(counts, bins, label='MC')
-        draw(mu, sigma, 2, ax, 'UP')
-        # draw(mu_raua, sigma_raua, 2, ax,'RA-UA')
-        draw(mu_sample, sigma_sample, 3, ax,'SAMPLE')
-        # bin_range = bins[-1] - bins[0]
-        # print(bins[0], bins[-1])
-        # ax.set_xlim(bins[0]-bin_range/2,bins[-1]+bin_range/2)
-        # ax.set_xlim(bins[0],bins[-1])
-        # plt.savefig('hist_compare/{}_{}_{}.png'.format(data_opts[data_type],range_lower,range_higher))
-
-
-handles, labels = ax.get_legend_handles_labels()
-fig.legend(handles, labels, loc=(0.875,0.82))
-fig.tight_layout()
-plt.savefig('hist_compare/dist.png', bbox_inches='tight')
-plt.savefig('hist_compare/dist.pdf', bbox_inches='tight')
+    print(valid)
+    print(dkl1/valid, dkl2/valid, dkl3/valid)
