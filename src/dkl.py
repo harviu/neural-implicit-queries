@@ -19,7 +19,7 @@ def kl(counts, bins, mu, sigma):
 key = jax.random.PRNGKey(42)
 
 data_opts = ['Vortex', 'Asteroid', 'Combustion', 'Ethanediol','Isotropic','fox', 'hammer','birdcage','bunny']
-for i, data_type in enumerate([0]):
+for i, data_type in enumerate([0, 3, 2, 4]):
     if data_type == 0:
         test_model = 'sample_inputs/vorts_sin_8_32.npz'
         input_file = '../data/vorts01.data'
@@ -52,7 +52,7 @@ for i, data_type in enumerate([0]):
     elif data_type == 8:
         test_model = 'sample_inputs/bunny.npz'
 
-    N = 4000
+    N = 1000
     valid = 0
     dkl1 = 0
     dkl2 = 0
@@ -70,7 +70,14 @@ for i, data_type in enumerate([0]):
     # else:
     #     scale = jnp.array((0.02,0.02,0.02))
     key, subkey = jax.random.split(key)
-    scale = jax.random.uniform(subkey,(N,1))
+    # scale = jax.random.uniform(subkey,(N,1))
+    if data_type in [0,3]:
+        scale_size = [1/32, 1/16, 1/8, 1/4, 1/2, 1]
+    elif data_type == 2:
+        scale_size = [1/64, 1/32, 1/16, 1/8, 1/4, 1/2]
+    elif data_type == 4:
+        scale_size = [1/128, 1/64, 1/32, 1/16, 1/8, 1/4]
+    scale = jnp.array((scale_size[0],) * 3)
     lower = center - scale  
     upper = center + scale
     # analyze histogram
@@ -97,7 +104,7 @@ for i, data_type in enumerate([0]):
         dkl1 += kl(counts, bins, mu, sigma)
         
         #RAUA
-        samples, mu_raua, sigma_raua = compare_mc_clt(implicit_func2, params2, range_lower, range_higher, n=10)
+        samples, mu_raua, sigma_raua = compare_mc_clt(implicit_func2, params2, range_lower, range_higher, n=100)
         # samples = samples * 100
         # mu_raua *= 100
         # sigma_raua *= 100

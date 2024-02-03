@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt    
 import numpy as np
 
-fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+fig, ax = plt.subplots(2, 2, figsize=(7, 6))
 data_label = ['Vortex', 'Ethanediol', 'Combustion','Isotropic']
 data_name = ['vort', 'eth', 'comb' ,'iso']
 
@@ -9,7 +9,7 @@ for i in range(4):
     data = data_name[i]
     filename = 'experiment_logs/time_%s.log' % data
     modes = ['dense']
-    modes_label = ['DENSE', 'UP', 'RAUA', 'FULL', 'FIXED', 'TRUN', 'APPE']
+    modes_label = ['DENSE', 'UP-2', 'UP-5', 'UP-10', 'RAUA', 'FULL', 'FIXED', 'TRUN', 'APPE']
     times = {
         'ACP': [],
         'INR': [],
@@ -53,8 +53,9 @@ for i in range(4):
         bottom += time
     axx.set_title(data_label[i])
     axx.set_ylabel("Time (seconds)")
+    axx.tick_params(axis='x', labelrotation=60)
     
 ax[0][0].legend()
-
+fig.tight_layout()
 fig.savefig('time.pdf', bbox_inches='tight') 
 fig.savefig('time.png', bbox_inches='tight') 

@@ -60,10 +60,10 @@ def test_hierarchical():
 
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry, mc_time=False)
+        batch_process_size = batch_process_size, t=t, warm_up=True, dry=dry, mc_time=True)
     tri_pos = hierarchical_marching_cubes(implicit_func, params, \
         isovalue, lower, upper, n_mc_depth, n_subcell_depth=n_mc_subcell, \
-        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry, mc_time = False)
+        batch_process_size = batch_process_size, t=t, warm_up=False, dry=dry, mc_time = True)
     return None
 
 
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     # t = 1
 
     # modes = ['uncertainty_all', 'affine_ua', 'affine_all', 'affine_fixed', 'affine_truncate', 'affine_append']
-    modes = ['mc', 'uncertainty_all']
+    modes = ['uncertainty_all']
     affine_opts = {}
     affine_opts['affine_n_truncate'] = 64
     affine_opts['affine_n_append'] = 4
@@ -165,20 +165,20 @@ if __name__ == "__main__":
     for i, mode in enumerate(modes):
 ############################################
         if mode == 'uncertainty_all':
-            t_range = [5]
+            t_range = [2,10]
         elif mode == 'affine_ua':
             t_range = [5]
         else:
-            t_range = [5]
+            t_range = [6,7,8,9]
 ############################################
         for t in t_range:
             implicit_func, params = generate_implicit_from_file(test_model, mode=mode, **affine_opts)
             
             # Dense reconstruction time test
-            if i == 0:
-                print()
-                print("[Dense]")
-                test_dense()
+            # if i == 0:
+            #     print()
+            #     print("[Dense]")
+            #     test_dense()
             
             print()
             print('[Mode]', mode)
@@ -307,6 +307,6 @@ if __name__ == "__main__":
             #     # print('[Dense F-score]', true_kd_array.sum() / (true_kd_array.sum() + (len(true_kd_array)-true_kd_array.sum())/2))
             #     # print('[PPV]', ppv)
 
-            #     print('=========================')
+            print('=========================')
 
 
